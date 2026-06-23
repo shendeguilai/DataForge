@@ -1,0 +1,55 @@
+.modal-view .modal-x {
+  position: fixed;
+  top: max(18px, calc(5vh + 14px));
+  right: max(18px, calc((100vw - 620px) / 2 + 18px));
+  margin: 0;
+  float: none;
+  z-index: 80;
+  box-shadow: 0 6px 18px rgba(23, 34, 28, .12);
+}
+
+#jobDetailModal .modal-x {
+  right: max(18px, calc((100vw - 920px) / 2 + 18px));
+}
+
+.review-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.review-title h3 {
+  margin: 0;
+}
+
+.copy-btn {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  color: var(--green);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+  opacity: .86;
+}
+
+.copy-btn:hover {
+  border-color: var(--green);
+  background: #f2f3e9;
+  color: var(--ink);
+  opacity: 1;
+}
+
+@media (max-width: 700px) {
+  .modal-view .modal-x,
+  #jobDetailModal .modal-x {
+    top: 30px;
+    right: 30px;
+  }
+}

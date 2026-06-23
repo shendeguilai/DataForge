@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="AI 驱动的算法竞赛测试数据生成工具">
+    <title>DataForge · 算法数据工坊</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/ui-fixes.css?v=2">
+    <link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>算法数据工坊</small>
+    </a>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <button class="ghost-btn" id="historyButton" type="button">最近任务 <span id="historyCount">0</span></button>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <button class="ghost-btn" id="loginPrompt" type="button">登录</button>
+        <button class="ghost-btn" id="registerPrompt" type="button">注册</button>
+    </div>
+</header>
+
+<main>
+    <section class="hero">
+        <div class="eyebrow"><span></span> AI DATA GENERATOR</div>
+        <h1>把题目交给我们，<br><em>把好数据带走。</em></h1>
+        <p>粘贴题面、标准程序和数据要求。系统会先规划测试点，再安全地编译、运行并打包。</p>
+        <div class="steps" aria-label="任务步骤">
+            <div class="step active" data-step="1"><b>01</b><span>填写需求</span></div>
+            <div class="step" data-step="2"><b>02</b><span>确认方案</span></div>
+            <div class="step" data-step="3"><b>03</b><span>生成下载</span></div>
+        </div>
+    </section>
+
+    <section class="workspace">
+        <form id="requestForm" class="panel form-panel">
+            <div class="panel-heading">
+                <div><span class="section-number">01</span><h2>题目内容</h2></div>
+                <span class="hint">支持 Markdown</span>
+            </div>
+            <textarea id="statement" required maxlength="100000" spellcheck="false" aria-label="题面 Markdown"></textarea>
+
+            <div class="divider"></div>
+            <div class="panel-heading code-heading">
+                <div><span class="section-number">02</span><h2>标准程序</h2></div>
+                <select id="cppStandard" aria-label="C++ 标准">
+                    <option value="c++14">C++14</option>
+                    <option value="c++17" selected>C++17</option>
+                    <option value="c++20">C++20</option>
+                </select>
+            </div>
+            <div class="code-wrap">
+                <div class="code-top"><i></i><i></i><i></i><span>standard.cpp</span></div>
+                <textarea id="standardCode" required maxlength="100000" spellcheck="false" aria-label="C++ 标准程序"></textarea>
+            </div>
+
+            <div class="divider"></div>
+            <div class="panel-heading">
+                <div><span class="section-number">03</span><h2>数据要求</h2></div>
+                <span class="hint">自然语言描述即可</span>
+            </div>
+            <textarea id="requirements" class="requirements" required maxlength="30000" aria-label="数据要求"></textarea>
+
+            <div class="form-footer">
+                <label class="count-field">
+                    <span>生成组数</span>
+                    <span class="number-control">
+                        <button id="minusCount" type="button">−</button>
+                        <input id="caseCount" type="number" min="1" max="100" value="10">
+                        <button id="plusCount" type="button">+</button>
+                    </span>
+                </label>
+                <button class="primary-btn" id="analyzeButton" type="submit">
+                    <span>分析并生成方案</span><b>→</b>
+                </button>
+            </div>
+            <p class="security-note"><span>✓</span> 程序将在受限进程中执行；第一版单组输入限制为 64 MB。</p>
+        </form>
+
+        <aside class="side-column">
+            <section class="panel note-panel">
+                <span class="spark">✦</span>
+                <h3>好数据，从清楚的要求开始</h3>
+                <p>建议写明数据范围、特殊结构、边界情况和各部分比例。AI 会据此规划每个测试点。</p>
+                <ul>
+                    <li>最小值与最大值</li>
+                    <li>随机、极端和退化情况</li>
+                    <li>针对错误算法的卡点</li>
+                </ul>
+            </section>
+            <section class="panel recent-panel">
+                <div class="panel-heading"><h3>最近任务</h3><button type="button" id="refreshJobs">刷新</button></div>
+                <div id="recentJobs" class="recent-list"><p class="empty">还没有生成记录</p></div>
+            </section>
+        </aside>
+    </section>
+
+    <section id="planView" class="modal-view hidden" aria-live="polite">
+        <div class="panel result-panel">
+            <button class="modal-x" id="closePlanView" type="button" aria-label="关闭">×</button>
+            <button class="close-btn" id="backToEdit" type="button" aria-label="返回修改">← 返回修改</button>
+            <div class="result-kicker">DATA PLAN</div>
+            <h2>数据方案已经备好</h2>
+            <p id="planSummary" class="result-summary"></p>
+            <div class="plan-meta"><span>预计体积</span><strong id="estimatedSize">—</strong><span>测试点</span><strong id="plannedCount">—</strong></div>
+            <div id="planGroups" class="plan-groups"></div>
+            <div id="demoWarning" class="warning hidden">当前未配置 AI 接口，使用的是通用“整数求和题”演示生成器。完整流程可以体验，但正式题目请先配置 AI。</div>
+            <details class="review-panel" open>
+                <summary>核对题面、AC 代码与数据要求</summary>
+                <div class="review-grid">
+                    <section><div class="review-title"><h3>题面</h3><button class="copy-btn" type="button" data-copy-target="planReviewStatement">复制</button></div><pre id="planReviewStatement"></pre></section>
+                    <section><div class="review-title"><h3>AC / 标准程序</h3><button class="copy-btn" type="button" data-copy-target="planReviewCode">复制</button></div><pre id="planReviewCode" class="code-review"></pre></section>
+                    <section><h3>数据要求</h3><pre id="planReviewRequirements"></pre></section>
+                </div>
+            </details>
+            <button id="confirmButton" class="primary-btn wide" type="button"><span>确认方案，开始生成</span><b>→</b></button>
+        </div>
+    </section>
+
+    <section id="progressView" class="modal-view hidden" aria-live="polite">
+        <div class="panel result-panel progress-panel">
+            <button class="modal-x" id="closeProgressView" type="button" aria-label="关闭">×</button>
+            <div id="statusOrb" class="status-orb"><span>✦</span></div>
+            <div class="result-kicker">GENERATING</div>
+            <h2 id="progressTitle">正在锻造测试数据</h2>
+            <p id="progressMessage" class="result-summary">任务正在队列中等待</p>
+            <div class="progress-track"><i id="progressBar"></i></div>
+            <div class="progress-label"><span id="progressPercent">0%</span><span>可以关闭页面，任务会继续执行</span></div>
+            <details class="review-panel progress-review" open>
+                <summary>生成记录详情：输入内容与数据规划</summary>
+                <div class="review-meta">
+                    <span>生成组数：<b id="progressReviewCaseCount">—</b></span>
+                    <span>C++ 标准：<b id="progressReviewCppStandard">—</b></span>
+                </div>
+                <div class="review-grid">
+                    <section><div class="review-title"><h3>题面</h3><button class="copy-btn" type="button" data-copy-target="progressReviewStatement">复制</button></div><pre id="progressReviewStatement"></pre></section>
+                    <section><div class="review-title"><h3>AC / 标准程序</h3><button class="copy-btn" type="button" data-copy-target="progressReviewCode">复制</button></div><pre id="progressReviewCode" class="code-review"></pre></section>
+                    <section><h3>数据要求</h3><pre id="progressReviewRequirements"></pre></section>
+                    <section class="review-wide"><h3>数据规划摘要</h3><p id="progressReviewPlanSummary" class="result-summary"></p><div id="progressReviewPlanGroups" class="plan-groups compact"></div></section>
+                </div>
+            </details>
+            <div id="errorBox" class="error-box hidden"></div>
+            <a id="downloadButton" class="primary-btn wide hidden" href="#"><span>下载数据包 ZIP</span><b>↓</b></a>
+            <button id="retryPlanButton" class="primary-btn wide hidden" type="button"><span>根据错误重新生成方案</span><b>↻</b></button>
+            <button id="newTaskButton" class="text-btn hidden" type="button">再生成一份</button>
+        </div>
+    </section>
+</main>
+
+<section id="authView" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-card">
+        <button class="auth-close" id="closeAuth" type="button" aria-label="暂不登录">×</button>
+        <a class="brand auth-brand" href="/"><span class="brand-mark">D</span><span>DataForge</span></a>
+        <p id="authHint" class="auth-hint">登录或注册后，就可以生成并下载你的测试数据。</p>
+        <div class="auth-tabs"><button class="active" data-auth-tab="login">登录</button><button data-auth-tab="register">邀请码注册</button></div>
+        <form id="loginForm" class="auth-form">
+            <h2 id="authTitle">欢迎回来</h2><p>登录后继续生成和下载你的测试数据。</p>
+            <label>用户名<input id="loginUsername" autocomplete="username" required></label>
+            <label>密码<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+            <button class="primary-btn wide" type="submit"><span>登录</span><b>→</b></button>
+        </form>
+        <form id="registerForm" class="auth-form hidden">
+            <h2>创建出题账号</h2><p>用户名为 3～24 位字符，密码至少 8 位。</p>
+            <label>用户名<input id="registerUsername" autocomplete="username" required></label>
+            <label>密码<input id="registerPassword" type="password" autocomplete="new-password" required></label>
+            <label>邀请码<input id="inviteCode" type="password" required></label>
+            <button class="primary-btn wide" type="submit"><span>注册并登录</span><b>→</b></button>
+        </form>
+        <div id="authError" class="error-box hidden"></div>
+    </div>
+</section>
+
+<footer><span>DataForge / MVP 0.1</span><span>用可复现的种子，造可信的数据。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/app.js"></script>
+</body>
+</html>
