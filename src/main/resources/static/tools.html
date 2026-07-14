@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="面向算法竞赛和日常开发的小工具集合">
+    <title>实用工具 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a href="/algorithms.html">算法可视化</a>
+        <a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <a class="ghost-btn" href="/">登录</a>
+        <a class="ghost-btn" href="/">注册</a>
+    </div>
+</header>
+
+<main class="portal-main">
+    <section class="portal-hero">
+        <div class="eyebrow"><span></span> TOOLBOX</div>
+        <h1>实用工具，<br><em>慢慢变多。</em></h1>
+        <p>这个模块会收纳你之后需要的小工具：比赛账号统计、用户名批量处理、格式转换、数据检查等。第一版先把目录搭好，后续逐个接入。</p>
+    </section>
+
+    <section class="portal-grid" aria-label="实用工具列表">
+        <article class="panel portal-card">
+            <div class="portal-visual tool-visual" aria-hidden="true">
+                <div class="tool-icon">At</div>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">已接入</span>
+                <h2>AtCoder 成绩统计</h2>
+                <p>填写 AtCoder 用户名，查询近五场比赛的题目、赛时 AC / 提交数、提交时间线和 Rating 变化。</p>
+                <a class="primary-btn" href="/atcoder.html"><span>打开工具</span><b>→</b></a>
+            </div>
+        </article>
+
+        <article class="panel portal-card">
+            <div class="portal-visual tool-visual" aria-hidden="true">
+                <div class="tool-icon">ID</div>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">预留入口</span>
+                <h2>用户名 / 账号查询工具</h2>
+                <p>用于整理、校验或批量查询比赛平台用户名，适合作为后续账号统计类工具的基础入口。</p>
+                <button class="primary-btn" type="button" data-coming-soon="用户名工具即将支持"><span>打开工具</span><b>→</b></button>
+            </div>
+        </article>
+
+        <article class="panel portal-card">
+            <div class="portal-visual tool-visual" aria-hidden="true">
+                <div class="tool-icon">Σ</div>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">预留入口</span>
+                <h2>更多竞赛小工具</h2>
+                <p>预留给之后的格式转换、随机数据检查、榜单辅助统计、题单整理等小功能。</p>
+                <button class="primary-btn" type="button" data-coming-soon="更多工具正在规划中"><span>打开工具</span><b>→</b></button>
+            </div>
+        </article>
+    </section>
+</main>
+
+<footer><span>DataForge / Toolbox</span><span>把重复的小活儿，变成顺手的工具。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+</body>
+</html>

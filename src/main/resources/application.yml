@@ -25,6 +25,8 @@ dataforge:
   process-stack-mb: ${DATAFORGE_PROCESS_STACK_MB:256}
   daily-generation-limit: ${DAILY_GENERATION_LIMIT:30}
   invite-code: ${INVITE_CODE:443322}
+  atcoder:
+    cookie: ${ATCODER_COOKIE:}
   admin:
     username: ${ADMIN_USERNAME:admin}
     password: ${ADMIN_PASSWORD:admin123456}

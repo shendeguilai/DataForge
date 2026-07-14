@@ -1,0 +1,534 @@
+.hanoi-main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 64px 0 90px;
+}
+
+.hanoi-hero-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
+  align-items: center;
+  margin-bottom: 28px;
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(215, 239, 114, .42), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgba(30, 89, 61, .12), transparent 24%),
+    linear-gradient(135deg, rgba(255, 253, 248, .96), rgba(242, 243, 233, .92));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.hanoi-hero-card:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(30, 89, 61, .12) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(90deg, rgba(0,0,0,.35), transparent 78%);
+  pointer-events: none;
+}
+
+.hanoi-hero-copy,
+.hanoi-hero-visual {
+  position: relative;
+  z-index: 1;
+}
+
+.hanoi-hero-copy h1 {
+  margin: 16px 0 12px;
+  font: 600 clamp(42px, 5vw, 62px)/1.02 Georgia, "Songti SC", serif;
+  letter-spacing: -2px;
+}
+
+.hanoi-hero-copy p {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.85;
+  margin: 0;
+}
+
+.hanoi-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.hanoi-hero-tags span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: var(--green);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.hanoi-hero-visual {
+  min-height: 210px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(238, 241, 231, .88)),
+    radial-gradient(circle at 50% 0%, rgba(215, 239, 114, .42), transparent 46%);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 22px 18px 34px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 16px 34px rgba(23, 34, 28, .08);
+}
+
+.mini-tower {
+  position: relative;
+  height: 150px;
+}
+
+.mini-tower i {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  width: 5px;
+  height: 118px;
+  transform: translateX(-50%);
+  border-radius: 99px;
+  background: linear-gradient(180deg, #aeb8b4, #73817c);
+}
+
+.mini-tower b {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 8px;
+  height: 9px;
+  border-radius: 999px;
+  background: #82908a;
+}
+
+.mini-tower span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: var(--w);
+  height: 16px;
+  margin: 0 auto 5px;
+  top: 86px;
+  border-radius: 999px;
+  background: var(--c);
+  box-shadow: 0 5px 12px rgba(23, 34, 28, .13);
+}
+
+.mini-tower.active {
+  filter: saturate(1.08);
+}
+
+.hanoi-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.hanoi-board-panel {
+  padding: 26px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hanoi-board-panel:before {
+  content: "";
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  right: -160px;
+  top: -170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(215, 239, 114, .42), transparent 65%);
+  pointer-events: none;
+}
+
+.hanoi-board-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.hanoi-board-top h2 {
+  margin: 8px 0 0;
+  font: 500 32px/1.1 Georgia, "Songti SC", serif;
+  letter-spacing: -1px;
+}
+
+.hanoi-progress-wrap {
+  min-width: 210px;
+  display: grid;
+  gap: 8px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.hanoi-progress-wrap i {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: #e4e6dd;
+  overflow: hidden;
+}
+
+.hanoi-progress-wrap b {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #70a86a, var(--lime));
+  transition: width .25s ease;
+}
+
+.hanoi-board {
+  position: relative;
+  min-height: 430px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  align-items: end;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(215, 239, 114, .32), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(238, 241, 231, .94)),
+    radial-gradient(circle at 20px 20px, rgba(30, 89, 61, .08) 2px, transparent 2px) 0 0/22px 22px;
+  border: 1px solid var(--line);
+  padding: 24px 18px 42px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .78), 0 24px 50px rgba(23, 34, 28, .08);
+  overflow: hidden;
+}
+
+.hanoi-board:after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 54px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(23, 34, 28, .12), transparent 68%);
+  pointer-events: none;
+}
+
+.hanoi-board.complete {
+  box-shadow: inset 0 0 0 2px rgba(215, 239, 114, .9), 0 26px 56px rgba(30, 89, 61, .16);
+}
+
+.tower {
+  position: relative;
+  min-height: 360px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 18px;
+  outline: none;
+  transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.tower:hover,
+.tower.selected {
+  background: rgba(255, 255, 255, .5);
+  box-shadow: inset 0 0 0 1px rgba(30, 89, 61, .08);
+}
+
+.tower.hint {
+  box-shadow: inset 0 0 0 2px rgba(30, 89, 61, .34), 0 12px 24px rgba(30, 89, 61, .08);
+  background: rgba(215, 239, 114, .2);
+}
+
+.tower-stick {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  width: 6px;
+  height: 285px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #b2bbb7, #73817c);
+  box-shadow: 0 8px 20px rgba(23, 34, 28, .12);
+}
+
+.tower-base {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 28px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #a8b2ae, #74837c);
+  box-shadow: 0 8px 14px rgba(23, 34, 28, .14);
+}
+
+.tower-label {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  color: var(--green);
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: 800 12px ui-monospace, monospace;
+}
+
+.tower-stack {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  width: min(90%, 240px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hanoi-disk {
+  height: 25px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: rgba(21, 32, 25, .84);
+  font: 800 11px ui-monospace, monospace;
+  border: 1px solid rgba(23, 34, 28, .16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .54), 0 6px 13px rgba(23, 34, 28, .15);
+  transition: transform .18s ease, filter .18s ease;
+}
+
+.tower.selected .hanoi-disk:last-child {
+  transform: translateY(-8px);
+  filter: brightness(1.05);
+}
+
+.hanoi-status {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffdf8, #f2f3e9);
+  color: var(--green);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 10px 28px rgba(23, 34, 28, .05);
+}
+
+.hanoi-rules {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.hanoi-rules span {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .58);
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hanoi-rules b {
+  color: var(--green);
+  font: 800 10px ui-monospace, monospace;
+  margin-right: 7px;
+}
+
+.hanoi-settings {
+  padding: 24px;
+  align-self: start;
+  position: sticky;
+  top: 94px;
+}
+
+.hanoi-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 18px 0;
+}
+
+.hanoi-field b {
+  color: var(--green);
+}
+
+.hanoi-field select,
+.hanoi-field input[type="range"] {
+  width: 100%;
+}
+
+.hanoi-field select {
+  border: 1px solid var(--line);
+  background: #faf9f4;
+  border-radius: 11px;
+  padding: 11px 12px;
+  outline: none;
+}
+
+.hanoi-field input[type="range"] {
+  accent-color: var(--green);
+}
+
+.hanoi-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.hanoi-stats div {
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #f2f3e9, #fffdf8);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.hanoi-stats strong {
+  display: block;
+  color: var(--green);
+  font: 600 26px Georgia, serif;
+}
+
+.hanoi-stats span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.hanoi-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hanoi-actions .primary-btn {
+  width: 100%;
+  grid-column: 1 / -1;
+}
+
+.hanoi-actions .ghost-btn {
+  width: 100%;
+  text-align: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .55);
+}
+
+.hanoi-actions .danger {
+  color: var(--red);
+}
+
+.hanoi-note {
+  margin-top: 18px;
+  padding: 15px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff4cf, #fffaf0);
+  color: #725d19;
+  font-size: 12px;
+  line-height: 1.65;
+  border: 1px solid rgba(114, 93, 25, .12);
+}
+
+.hanoi-note p {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 980px) {
+  .hanoi-main {
+    margin-left: 20px;
+    margin-right: 20px;
+  }
+
+  .hanoi-hero-card {
+    grid-template-columns: 1fr;
+    padding: 26px;
+  }
+
+  .hanoi-hero-visual {
+    min-height: 170px;
+  }
+
+  .mini-tower {
+    height: 120px;
+  }
+
+  .hanoi-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .hanoi-settings {
+    position: static;
+  }
+
+  .hanoi-board-top {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .hanoi-progress-wrap {
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 680px) {
+  .hanoi-hero-card {
+    padding: 22px;
+    border-radius: 18px;
+  }
+
+  .hanoi-hero-copy h1 {
+    font-size: 40px;
+    letter-spacing: -1px;
+  }
+
+  .hanoi-hero-copy p {
+    font-size: 14px;
+  }
+
+  .hanoi-hero-visual {
+    display: none;
+  }
+
+  .hanoi-board {
+    gap: 6px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .hanoi-board-panel {
+    padding: 14px;
+  }
+
+  .hanoi-disk {
+    height: 21px;
+    font-size: 10px;
+  }
+
+  .hanoi-rules {
+    grid-template-columns: 1fr;
+  }
+
+  .hanoi-actions {
+    grid-template-columns: 1fr;
+  }
+}

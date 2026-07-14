@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="在线汉诺塔游戏与递归算法可视化演示">
+    <title>在线汉诺塔游戏 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/hanoi.css">
+    <link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a class="active" href="/algorithms.html">算法可视化</a>
+        <a href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <a class="ghost-btn" href="/">登录</a>
+        <a class="ghost-btn" href="/">注册</a>
+    </div>
+</header>
+
+<main class="hanoi-main">
+    <section class="hanoi-hero-card">
+        <div class="hanoi-hero-copy">
+            <div class="eyebrow"><span></span> RECURSION VISUALIZER</div>
+            <h1>在线汉诺塔游戏</h1>
+            <p>把递归拆成一连串可观察的移动。你可以手动挑战，也可以让程序按最优策略自动演示。</p>
+            <div class="hanoi-hero-tags" aria-label="功能亮点">
+                <span>手动挑战</span>
+                <span>自动演示</span>
+                <span>一步提示</span>
+            </div>
+        </div>
+        <div class="hanoi-hero-visual" aria-hidden="true">
+            <div class="mini-tower">
+                <i></i><b></b>
+            </div>
+            <div class="mini-tower">
+                <i></i><b></b>
+                <span style="--w: 62%; --c: #56c7e8;"></span>
+            </div>
+            <div class="mini-tower active">
+                <i></i><b></b>
+                <span style="--w: 88%; --c: #ef6c65;"></span>
+                <span style="--w: 72%; --c: #d7ef72;"></span>
+                <span style="--w: 52%; --c: #7c74e8;"></span>
+            </div>
+        </div>
+    </section>
+
+    <section class="hanoi-shell">
+        <div class="panel hanoi-board-panel">
+            <div class="hanoi-board-top">
+                <div>
+                    <span class="soon-badge">Tower of Hanoi</span>
+                    <h2>移动盘子，抵达 C 柱</h2>
+                </div>
+                <div class="hanoi-progress-wrap" aria-label="完成进度">
+                    <span id="progressText">0%</span>
+                    <i><b id="progressBar"></b></i>
+                </div>
+            </div>
+            <div class="hanoi-board" id="hanoiBoard" aria-label="汉诺塔游戏区域">
+                <button class="tower" data-tower="0" type="button" aria-label="A 柱">
+                    <span class="tower-stick"></span>
+                    <span class="tower-base"></span>
+                    <span class="tower-label">A</span>
+                    <span class="tower-stack" id="tower0"></span>
+                </button>
+                <button class="tower" data-tower="1" type="button" aria-label="B 柱">
+                    <span class="tower-stick"></span>
+                    <span class="tower-base"></span>
+                    <span class="tower-label">B</span>
+                    <span class="tower-stack" id="tower1"></span>
+                </button>
+                <button class="tower" data-tower="2" type="button" aria-label="C 柱">
+                    <span class="tower-stick"></span>
+                    <span class="tower-base"></span>
+                    <span class="tower-label">C</span>
+                    <span class="tower-stack" id="tower2"></span>
+                </button>
+            </div>
+            <div class="hanoi-status">
+                <span id="hanoiMessage">点击 A 柱选择最上方盘子，再点击目标柱移动。</span>
+            </div>
+            <div class="hanoi-rules">
+                <span><b>01</b> 每次只能移动一个盘子</span>
+                <span><b>02</b> 大盘不能放在小盘上</span>
+                <span><b>03</b> 目标是全部移动到 C 柱</span>
+            </div>
+        </div>
+
+        <aside class="panel hanoi-settings">
+            <div class="panel-heading">
+                <div><span class="section-number">01</span><h2>控制台</h2></div>
+            </div>
+            <label class="hanoi-field">
+                <span>盘子数量</span>
+                <select id="diskCount">
+                    <option value="3">3 个</option>
+                    <option value="4">4 个</option>
+                    <option value="5" selected>5 个</option>
+                    <option value="6">6 个</option>
+                    <option value="7">7 个</option>
+                    <option value="8">8 个</option>
+                </select>
+            </label>
+            <label class="hanoi-field">
+                <span>移动速度 <b id="speedLabel">500ms</b></span>
+                <input id="speedRange" type="range" min="120" max="1200" step="20" value="500">
+            </label>
+
+            <div class="hanoi-stats">
+                <div><strong id="moveCount">0</strong><span>当前步数</span></div>
+                <div><strong id="minimumMoves">31</strong><span>最优步数</span></div>
+            </div>
+
+            <div class="hanoi-actions">
+                <button class="primary-btn" id="autoButton" type="button"><span>自动演示</span><b>▶</b></button>
+                <button class="ghost-btn" id="pauseButton" type="button">暂停</button>
+                <button class="ghost-btn" id="stepButton" type="button">单步</button>
+                <button class="ghost-btn" id="hintButton" type="button">获取提示</button>
+                <button class="ghost-btn danger" id="resetButton" type="button">重置</button>
+            </div>
+
+            <div class="hanoi-note">
+                <b>玩法</b>
+                <p>手动模式下点击一根柱子选中最上方盘子，再点击目标柱。系统会自动阻止非法移动。</p>
+            </div>
+        </aside>
+    </section>
+</main>
+
+<footer><span>DataForge / Tower of Hanoi</span><span>递归、分治和状态转移的可视化小实验。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/hanoi.js"></script>
+</body>
+</html>

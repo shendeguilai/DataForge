@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="常见算法与数据结构的可视化演示入口">
+    <title>算法可视化 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a class="active" href="/algorithms.html">算法可视化</a>
+        <a href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <a class="ghost-btn" href="/">登录</a>
+        <a class="ghost-btn" href="/">注册</a>
+    </div>
+</header>
+
+<main class="portal-main">
+    <section class="portal-hero">
+        <div class="eyebrow"><span></span> ALGORITHM VISUALIZER</div>
+        <h1>常见算法的<br><em>可视化演示</em></h1>
+        <p>这里会逐步收集数据结构、经典递归、哈希、图论等算法的交互式演示。第一版先搭好入口，后续可以逐个补成真正可玩的动画工具。</p>
+    </section>
+
+    <section class="portal-grid" aria-label="算法可视化列表">
+        <article class="panel portal-card">
+            <div class="portal-visual fenwick-card-visual" aria-hidden="true">
+                <span style="--i:1;--h:38%">1</span><span style="--i:2;--h:62%">2</span><span style="--i:3;--h:44%">3</span><span style="--i:4;--h:82%">4</span>
+                <span style="--i:5;--h:36%">5</span><span style="--i:6;--h:58%">6</span><span style="--i:7;--h:40%">7</span><span style="--i:8;--h:96%">8</span>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">讲义 + 可视化</span>
+                <h2>树状数组：lowbit 与前缀和</h2>
+                <p>用讲义的方式解释树状数组如何用 lowbit 维护区间，并把单点加、前缀查询和代码执行过程同步可视化。</p>
+                <a class="primary-btn" href="/fenwick.html"><span>开始学习</span><b>→</b></a>
+            </div>
+        </article>
+
+        <article class="panel portal-card">
+            <div class="portal-visual hanoi-visual" aria-hidden="true">
+                <span class="peg" style="left: 16%;"></span>
+                <span class="peg" style="left: 50%;"></span>
+                <span class="peg" style="left: 84%;"></span>
+                <span class="disk" style="bottom: 44px; width: 136px; background: #f24d7d;"></span>
+                <span class="disk" style="bottom: 60px; width: 116px; background: #d7ef72;"></span>
+                <span class="disk" style="bottom: 76px; width: 96px; background: #56c7e8;"></span>
+                <span class="disk" style="bottom: 92px; width: 76px; background: #45c5a0;"></span>
+                <span class="disk" style="bottom: 108px; width: 56px; background: #7c74e8;"></span>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">已开放</span>
+                <h2>在线汉诺塔游戏</h2>
+                <p>用可视化方式展示汉诺塔递归解法，后续会支持盘数、移动速度、自动/手动模式和步骤提示。</p>
+                <a class="primary-btn" href="/hanoi.html"><span>玩一玩</span><b>→</b></a>
+            </div>
+        </article>
+
+        <article class="panel portal-card">
+            <div class="portal-visual hash-visual" aria-hidden="true">
+                <span class="hash-cell">17</span><span class="hash-cell">32</span><span class="hash-cell hit">88</span><span class="hash-cell">04</span><span class="hash-cell">19</span>
+                <span class="hash-cell">51</span><span class="hash-cell">73</span><span class="hash-cell">09</span><span class="hash-cell">26</span><span class="hash-cell hit">40</span>
+                <span class="hash-cell">61</span><span class="hash-cell">10</span><span class="hash-cell">85</span><span class="hash-cell">12</span><span class="hash-cell">29</span>
+                <span class="hash-cell hit">96</span><span class="hash-cell">33</span><span class="hash-cell">07</span><span class="hash-cell">44</span><span class="hash-cell">58</span>
+                <span class="hash-cell">20</span><span class="hash-cell">38</span><span class="hash-cell">71</span><span class="hash-cell">63</span><span class="hash-cell">02</span>
+                <span class="hash-cell">15</span><span class="hash-cell hit">99</span><span class="hash-cell">47</span><span class="hash-cell">54</span><span class="hash-cell">68</span>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">计划中</span>
+                <h2>哈希表操作的可视化演示</h2>
+                <p>展示哈希表插入、删除、搜索、冲突处理和不同哈希函数下的分布情况，适合讲解散列表原理。</p>
+                <button class="primary-btn" type="button" data-coming-soon="哈希表可视化正在开发中"><span>玩一玩</span><b>→</b></button>
+            </div>
+        </article>
+    </section>
+</main>
+
+<footer><span>DataForge / Algorithm Visualizer</span><span>把抽象步骤变成能看见的过程。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+</body>
+</html>

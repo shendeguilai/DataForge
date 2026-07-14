@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="树状数组 lowbit、单点加和前缀查询的讲义式可视化">
+    <title>树状数组讲义 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/fenwick.css">
+    <link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a class="active" href="/algorithms.html">算法可视化</a>
+        <a href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <a class="ghost-btn" href="/">登录</a>
+        <a class="ghost-btn" href="/">注册</a>
+    </div>
+</header>
+
+<main class="lesson-main">
+    <section class="lesson-hero">
+        <div>
+            <div class="eyebrow"><span></span> DATA STRUCTURE LECTURE</div>
+            <h1>树状数组：<em>用 lowbit 拼出前缀和</em></h1>
+            <p>树状数组 Fenwick Tree 用一个数组 <code>tree[]</code> 保存若干段区间和，让“单点修改”和“前缀查询”都能在 <code>O(log n)</code> 内完成。</p>
+        </div>
+        <div class="lesson-summary-card">
+            <b>核心公式</b>
+            <code>lowbit(x) = x & -x</code>
+            <span>tree[i] 维护区间 [i-lowbit(i)+1, i]</span>
+        </div>
+    </section>
+
+    <section class="lesson-layout">
+        <article class="lesson-content">
+            <section class="lesson-section">
+                <span class="lesson-step">01</span>
+                <h2>先理解：tree[i] 到底维护哪一段？</h2>
+                <p><code>lowbit(i)</code> 表示二进制下最低位的 1 对应的值。它决定了 <code>tree[i]</code> 负责的区间长度。</p>
+                <p>例如 <code>i=6</code>，二进制是 <code>110</code>，所以 <code>lowbit(6)=2</code>，于是 <code>tree[6]</code> 维护 <code>[5,6]</code>。</p>
+                <pre class="code-block compact-code"><code><span data-code="rangeLowbit">int lowbit(int x) { return x & -x; }</span></code></pre>
+            </section>
+
+            <section class="lesson-section visual-demo" id="rangeDemo">
+                <div class="visual-heading">
+                    <div>
+                        <h2>可视化：tree[i] 维护的区间</h2>
+                        <p>选择一个 <code>tree[i]</code>，看它覆盖原数组中的哪一段。</p>
+                    </div>
+                </div>
+
+                <div class="visual-control-bar single-control">
+                    <label>选择 tree 下标
+                        <input id="rangeIndexInput" type="number" min="1" max="8" value="6">
+                    </label>
+                    <div class="bit-actions one-action">
+                        <button class="ghost-btn" id="showRangeButton" type="button">看维护区间</button>
+                    </div>
+                </div>
+
+                <div class="range-diagram">
+                    <div class="range-summary-grid" id="rangeSummaryGrid"></div>
+                    <div class="range-map" id="rangeIntervalMap"></div>
+                    <div class="range-explain-grid">
+                        <div class="bit-message" id="rangeMessage">lowbit(6) = 2，所以 tree[6] 维护原数组区间 [5, 6]。</div>
+                        <div class="bit-formula">
+                            <span id="rangeFormula">6 的二进制是 110，最低位的 1 代表 2；tree[6] = a[5] + ... + a[6]。</span>
+                        </div>
+                    </div>
+                    <div class="bit-range-line" id="rangeLine">当前高亮：tree[6] 覆盖 a[5] 到 a[6]。</div>
+                </div>
+            </section>
+
+            <section class="lesson-section">
+                <span class="lesson-step">02</span>
+                <h2>单点加：为什么是 i += lowbit(i)？</h2>
+                <p>当 <code>a[x]</code> 增加 <code>k</code> 时，所有“包含 x 的 tree 区间”都要更新。沿着 <code>x, x+lowbit(x), ...</code> 往上跳，刚好会经过这些负责区间。</p>
+                <pre class="code-block"><code><span data-code="add1">void add(int x, int k) {</span>
+<span data-code="add2">    for (int i = x; i <= n; i += lowbit(i)) {</span>
+<span data-code="add3">        tree[i] += k;</span>
+<span data-code="add4">    }</span>
+<span data-code="add5">}</span></code></pre>
+            </section>
+
+            <section class="lesson-section visual-demo" id="addDemo">
+                <div class="visual-heading">
+                    <div>
+                        <h2>可视化：单点加更新哪些区间</h2>
+                        <p>每次访问的 <code>tree[i]</code> 都是一段包含 <code>a[x]</code> 的区间，所以这些节点都要加上 <code>k</code>。</p>
+                    </div>
+                </div>
+
+                <div class="visual-control-bar">
+                    <label>修改下标 x
+                        <input id="addIndexInput" type="number" min="1" max="8" value="6">
+                    </label>
+                    <label>增加值 k
+                        <input id="addDeltaInput" type="number" min="-9" max="9" value="3">
+                    </label>
+                    <div class="bit-actions four-actions">
+                        <button class="ghost-btn" id="addButton" type="button">自动演示</button>
+                        <button class="ghost-btn" id="addPrevButton" type="button">上一步</button>
+                        <button class="ghost-btn" id="addStepButton" type="button">下一步</button>
+                        <button class="ghost-btn danger" id="resetAddButton" type="button">重置</button>
+                    </div>
+                </div>
+
+                <div class="add-diagram">
+                    <div class="add-map" id="addIntervalMap"></div>
+                    <div class="range-explain-grid">
+                        <div class="bit-message" id="addMessage">点击“下一步”或“自动演示” add(6, 3)，观察哪些 tree 区间会一起变化。</div>
+                        <div class="bit-formula">
+                            <span id="addFormula">tree[6] 维护 [5,6]，tree[8] 维护 [1,8]，它们都包含 a[6]。</span>
+                        </div>
+                    </div>
+                    <div class="bit-range-line" id="addLine">更新路径：tree[6] -> tree[8]。</div>
+                </div>
+            </section>
+
+            <section class="lesson-section">
+                <span class="lesson-step">03</span>
+                <h2>前缀查询：为什么是 i -= lowbit(i)？</h2>
+                <p>查询 <code>query(x)</code> 时，我们把 <code>[1,x]</code> 拆成若干个 tree 已经维护好的区间。从 <code>x</code> 开始，每次拿走 <code>tree[i]</code> 负责的一段，然后跳到左边剩余部分。</p>
+                <pre class="code-block"><code><span data-code="query1">int query(int x) {</span>
+<span data-code="query2">    int ans = 0;</span>
+<span data-code="query3">    for (int i = x; i; i -= lowbit(i)) {</span>
+<span data-code="query4">        ans += tree[i];</span>
+<span data-code="query5">    }</span>
+<span data-code="query6">    return ans;</span>
+<span data-code="query7">}</span></code></pre>
+            </section>
+
+            <section class="lesson-section visual-demo" id="queryDemo">
+                <div class="visual-heading">
+                    <div>
+                        <h2>可视化：query 拆成哪些区间</h2>
+                        <p>查询前缀和时，访问到的每个 <code>tree[i]</code> 正好贡献一个不重不漏的区间。</p>
+                    </div>
+                </div>
+
+                <div class="visual-control-bar single-control">
+                    <label>查询前缀 x
+                        <input id="queryIndexInput" type="number" min="1" max="8" value="6">
+                    </label>
+                    <div class="bit-actions four-actions">
+                        <button class="ghost-btn" id="queryButton" type="button">自动演示</button>
+                        <button class="ghost-btn" id="queryPrevButton" type="button">上一步</button>
+                        <button class="ghost-btn" id="queryStepButton" type="button">下一步</button>
+                        <button class="ghost-btn danger" id="resetQueryButton" type="button">重置</button>
+                    </div>
+                </div>
+
+                <div class="query-diagram">
+                    <div class="query-map" id="queryIntervalMap"></div>
+                    <div class="range-explain-grid">
+                        <div class="bit-message" id="queryMessage">点击“下一步”或“自动演示” query(6)，观察前缀 [1,6] 如何被拆分。</div>
+                        <div class="bit-formula">
+                            <span id="queryFormula">从 i=6 开始，每次加入 tree[i]，再令 i -= lowbit(i)。</span>
+                        </div>
+                    </div>
+                    <div class="bit-range-line" id="queryLine">query(6) 会拆成 [5,6] + [1,4]。</div>
+                </div>
+            </section>
+
+            <section class="lesson-section">
+                <span class="lesson-step">04</span>
+                <h2>区间加 + 单点查询：维护差分数组</h2>
+                <p>如果树状数组里维护的是差分数组 <code>d[i] = a[i] - a[i-1]</code>，那么 <code>a[x]</code> 就等于 <code>d[1] + ... + d[x]</code>。</p>
+                <p>于是给区间 <code>[l,r]</code> 整体加 <code>k</code>，只需要让 <code>d[l] += k</code>，再让 <code>d[r+1] -= k</code>。查询单点值时，直接求差分前缀和。</p>
+                <pre class="code-block"><code><span data-code="diffBuild">add(i, a[i] - a[i - 1]);</span>
+<span data-code="diffAdd1">void range_add(int l, int r, int k) {</span>
+<span data-code="diffAdd2">    add(l, k);</span>
+<span data-code="diffAdd3">    add(r + 1, -k);</span>
+<span data-code="diffAdd4">}</span>
+<span data-code="diffQuery1">int point_query(int x) {</span>
+<span data-code="diffQuery2">    return query(x);</span>
+<span data-code="diffQuery3">}</span></code></pre>
+            </section>
+
+            <section class="lesson-section visual-demo" id="diffDemo">
+                <div class="visual-heading">
+                    <div>
+                        <h2>可视化：区间加如何变成两个单点加</h2>
+                        <p>下面演示 <code>[l,r] += k</code> 如何只修改差分数组的两个位置，以及单点查询如何通过前缀和还原。</p>
+                    </div>
+                </div>
+
+                <div class="visual-control-bar diff-control">
+                    <label>左端点 l
+                        <input id="diffLeftInput" type="number" min="1" max="8" value="3">
+                    </label>
+                    <label>右端点 r
+                        <input id="diffRightInput" type="number" min="1" max="8" value="6">
+                    </label>
+                    <label>增加值 k
+                        <input id="diffDeltaInput" type="number" min="-9" max="9" value="2">
+                    </label>
+                    <label>查询 x
+                        <input id="diffQueryInput" type="number" min="1" max="8" value="5">
+                    </label>
+                    <div class="bit-actions four-actions">
+                        <button class="ghost-btn" id="diffButton" type="button">自动演示</button>
+                        <button class="ghost-btn" id="diffPrevButton" type="button">上一步</button>
+                        <button class="ghost-btn" id="diffStepButton" type="button">下一步</button>
+                        <button class="ghost-btn danger" id="resetDiffButton" type="button">重置</button>
+                    </div>
+                </div>
+
+                <div class="visual-grid">
+                    <div class="bit-board">
+                        <h3>原数组 a[i]</h3>
+                        <div class="bit-row" id="diffArrayRow"></div>
+                        <h3>差分数组 d[i]</h3>
+                        <div class="bit-row diff-row" id="diffDiffRow"></div>
+                        <h3>树状数组 tree[i] 维护 d[]</h3>
+                        <div class="bit-row tree-row" id="diffTreeRow"></div>
+                        <div class="bit-range-line" id="diffLine">区间 [3,6] += 2，会变成 add(3,2) 和 add(7,-2)。</div>
+                    </div>
+
+                    <div class="trace-panel">
+                        <div class="bit-message" id="diffMessage">点击“下一步”或“自动演示”，观察差分树状数组如何完成区间加和单点查询。</div>
+                        <div class="bit-formula">
+                            <span id="diffFormula">差分含义：a[x] = d[1] + ... + d[x]，所以 point_query(x) = query(x)。</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </article>
+    </section>
+</main>
+
+<footer><span>DataForge / Fenwick Tree Lecture</span><span>讲义中穿插可视化，让学生看到算法正在做什么。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/fenwick.js"></script>
+</body>
+</html>

@@ -20,7 +20,11 @@ public class SecurityConfig {
         http.csrf().disable()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED).and()
                 .authorizeRequests()
-                .antMatchers("/", "/index.html", "/styles.css", "/auth.css", "/app.js", "/error", "/api/auth/**").permitAll()
+                .antMatchers("/", "/index.html", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html",
+                        "/atcoder.html",
+                        "/styles.css", "/portal.css", "/hanoi.css", "/fenwick.css", "/atcoder.css", "/ui-fixes.css", "/auth.css",
+                        "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js",
+                        "/error", "/api/auth/**", "/api/tools/atcoder/**").permitAll()
                 .antMatchers("/admin.html", "/admin.js", "/admin.css", "/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
                 .and().exceptionHandling()

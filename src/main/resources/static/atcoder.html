@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="查询 AtCoder 用户近五场比赛成绩、过题情况与 Rating 变化">
+    <title>AtCoder 成绩统计 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/atcoder.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a href="/algorithms.html">算法可视化</a>
+        <a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <a class="ghost-btn" href="/">登录</a>
+        <a class="ghost-btn" href="/">注册</a>
+    </div>
+</header>
+
+<main class="portal-main atcoder-main">
+    <section class="atcoder-shell panel">
+        <div class="atcoder-intro">
+            <a class="text-btn back-link" href="/tools.html">← 返回工具列表</a>
+            <div class="eyebrow"><span></span> ATCODER STATS</div>
+            <h1>AtCoder 成绩统计</h1>
+            <p>输入用户名后查询该用户近五场比赛，展示每场比赛的 Rating 变化、赛时 AC / 提交数、题目完成情况和提交时间线。</p>
+        </div>
+        <form class="atcoder-search" id="atcoderForm">
+            <label for="atcoderUsername">AtCoder 用户名</label>
+            <div class="search-row">
+                <input id="atcoderUsername" name="username" autocomplete="off" placeholder="tourist" required>
+                <button class="primary-btn" id="queryButton" type="submit"><span>查询</span><b>→</b></button>
+            </div>
+            <p class="form-hint">只查询最近 5 场已参加比赛；赛时统计按比赛开始与结束时间过滤。</p>
+        </form>
+    </section>
+
+    <section class="atcoder-state panel hidden" id="statusPanel" aria-live="polite"></section>
+    <section class="atcoder-results hidden" id="resultPanel"></section>
+</main>
+
+<footer><span>DataForge / Toolbox</span><span>AtCoder 近期比赛表现速览。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/atcoder.js"></script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+.atcoder-main {
+  padding-top: 46px;
+}
+
+.atcoder-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 28px;
+  align-items: end;
+  padding: 30px;
+  margin-bottom: 24px;
+}
+
+.atcoder-intro h1 {
+  margin: 14px 0 12px;
+  font: 600 42px/1.08 Georgia, "Songti SC", serif;
+}
+
+.atcoder-intro p,
+.form-hint {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+  font-size: 13px;
+}
+
+.back-link {
+  display: inline-flex;
+  margin: 0 0 18px;
+  padding: 0;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.atcoder-search {
+  display: grid;
+  gap: 10px;
+}
+
+.atcoder-search label {
+  font-size: 12px;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.search-row input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #faf9f4;
+  color: var(--ink);
+  padding: 0 15px;
+  height: 48px;
+  outline: none;
+}
+
+.atcoder-state {
+  padding: 24px 28px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.atcoder-state strong {
+  color: var(--ink);
+}
+
+.atcoder-results {
+  display: grid;
+  gap: 22px;
+}
+
+.stats-summary {
+  padding: 18px 22px;
+}
+
+.stats-summary h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.stats-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.contest-card {
+  overflow: hidden;
+}
+
+.contest-head {
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: #faf9f4;
+}
+
+.contest-title {
+  min-width: 0;
+}
+
+.contest-title a {
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.contest-title a:hover {
+  color: var(--green);
+}
+
+.contest-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rating-box {
+  min-width: 230px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rating-item {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: white;
+}
+
+.rating-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-bottom: 5px;
+}
+
+.rating-item strong {
+  font-size: 16px;
+}
+
+.rating-delta.up strong {
+  color: var(--green);
+}
+
+.rating-delta.down strong {
+  color: var(--red);
+}
+
+.rating-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rating-line strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.rating-line b {
+  color: var(--muted);
+}
+
+.rating-line.up b {
+  color: var(--green);
+}
+
+.rating-line.down b {
+  color: var(--red);
+}
+
+.rating-line em {
+  font-style: normal;
+}
+
+.scoreboard-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.scoreboard-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: white;
+}
+
+.scoreboard-table th,
+.scoreboard-table td {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.scoreboard-table th:last-child,
+.scoreboard-table td:last-child {
+  border-right: 0;
+}
+
+.user-head,
+.user-cell {
+  width: 190px;
+  text-align: left !important;
+}
+
+.user-head {
+  padding: 10px 14px;
+  color: var(--muted);
+  background: #f2f3e9;
+  font: 800 12px ui-monospace, monospace;
+}
+
+.problem-head {
+  height: 44px;
+  background: #f2f3e9;
+  font-size: 12px;
+}
+
+.problem-head a {
+  color: var(--ink);
+  text-decoration: none;
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+}
+
+.problem-head a:hover {
+  color: var(--green);
+}
+
+.problem-head span {
+  color: var(--muted);
+  font: 700 10px ui-monospace, monospace;
+}
+
+.user-cell {
+  padding: 14px;
+  background: #fbfaf5;
+}
+
+.user-cell span {
+  display: block;
+  color: var(--red);
+  font-weight: 900;
+  margin-bottom: 5px;
+}
+
+.user-cell small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.score-cell {
+  height: 70px;
+  padding: 8px 6px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.score-cell a {
+  min-height: 48px;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.score-cell strong {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.score-cell small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.score-cell.solved strong {
+  color: #00a63e;
+}
+
+.score-cell.failed strong,
+.penalty {
+  color: var(--red);
+}
+
+.score-cell.empty {
+  color: #b0b3ad;
+  font-size: 18px;
+}
+
+.penalty {
+  font-size: 11px;
+  font-weight: 800;
+  margin-left: 3px;
+}
+
+@media (max-width: 980px) {
+  .atcoder-shell,
+  .contest-head {
+    grid-template-columns: 1fr;
+  }
+
+  .rating-box {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .atcoder-shell,
+  .contest-head,
+  .stats-summary {
+    padding: 18px;
+  }
+
+  .atcoder-intro h1 {
+    font-size: 32px;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rating-box {
+    grid-template-columns: 1fr;
+  }
+
+  .rating-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .scoreboard-table {
+    min-width: 680px;
+  }
+
+  .user-head,
+  .user-cell {
+    width: 150px;
+  }
+}
