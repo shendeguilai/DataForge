@@ -96,6 +96,7 @@
                             <button class="primary-btn compact-btn" id="startBattleButton" type="submit"><span>开始 PK</span><b>→</b></button>
                         </div>
                     </form>
+                    <button class="manual-finish-btn hidden" id="endBattleButton" type="button"><span>手动结束本局</span><b>■</b></button>
                     <button class="primary-btn rematch-btn hidden" id="resetBattleButton" type="button"><span>准备下一局</span><b>↻</b></button>
                     <button class="danger-link" id="closeRoomButton" type="button">关闭房间</button>
                 </section>
@@ -154,7 +155,7 @@
                 </div>
 
                 <div class="typing-dock hidden" id="typingDock">
-                    <div class="typing-dock-label"><strong>你的输入</strong><span>错字需要退格修正</span></div>
+                    <div class="typing-dock-label"><strong>你的输入</strong><span>错字需退格 · Tab 输入缩进 · Shift+Tab 撤回缩进</span></div>
                     <textarea id="typingInput" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="比赛输入框"></textarea>
                 </div>
 

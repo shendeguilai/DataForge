@@ -3,11 +3,28 @@
 <body class="admin-body">
 <header class="topbar"><a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminLogout">退出</button></div></header>
 <main class="admin-main">
-  <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
-  <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="jobs">生成记录</button></nav>
+  <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口、打字文章与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="articleTotal">—</strong><span>打字文章</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
+  <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="articles">打字文章</button><button data-panel="jobs">生成记录</button></nav>
   <section class="panel admin-panel" id="usersPanel"><div class="panel-heading"><div><span class="section-number">01</span><h2>用户管理</h2></div></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>注册时间</th><th>状态</th><th>每日上限</th><th>操作</th></tr></thead><tbody id="usersBody"></tbody></table></div></section>
   <section class="panel admin-panel hidden" id="aiPanel"><div class="panel-heading"><div><span class="section-number">02</span><h2>AI 接口与生成限制</h2></div><span class="hint" id="keyState"></span></div><form id="aiForm" class="settings-form"><label>API Base URL<input id="aiBaseUrl" placeholder="https://api.example.com/v1" required></label><label>模型名称<input id="aiModel" placeholder="model-name" required></label><label>API Key<input id="aiApiKey" type="password" placeholder="留空则保持原 Key 不变"><small>密钥加密保存，保存后不会回显。</small></label><label>每用户每日生成次数上限<input id="dailyGenerationLimit" type="number" min="1" max="10000" value="30" required><small>默认 30 次；保存后对所有普通用户和管理员都生效。</small></label><button class="primary-btn" type="submit"><span>保存配置</span><b>✓</b></button></form></section>
-  <section class="panel admin-panel hidden" id="jobsPanel"><div class="panel-heading"><div><span class="section-number">03</span><h2>生成记录</h2></div><button class="text-btn" id="refreshAdminJobs">刷新</button></div><div class="table-wrap"><table><thead><tr><th>题目</th><th>用户 ID</th><th>组数</th><th>状态</th><th>创建时间</th><th>错误</th></tr></thead><tbody id="jobsBody"></tbody></table></div></section>
+  <section class="panel admin-panel hidden" id="articlesPanel">
+    <div class="panel-heading"><div><span class="section-number">03</span><h2>打字 PK 文章管理</h2></div><button class="text-btn" id="newArticleButton" type="button">＋ 新增文章</button></div>
+    <div class="article-manager">
+      <form id="articleForm" class="article-form">
+        <input id="articleId" type="hidden">
+        <div class="article-form-heading"><div><span id="articleFormMode">NEW ARTICLE</span><h3 id="articleFormTitle">新增文章</h3></div><button class="text-btn hidden" id="cancelArticleEdit" type="button">取消编辑</button></div>
+        <label>文章标题<input id="articleTitleInput" maxlength="80" placeholder="例如：C++ 前缀和模板" required></label>
+        <label>文章分类<select id="articleCategoryInput" required><option value="中文">中文</option><option value="英文">英文</option><option value="代码">代码</option></select></label>
+        <label>文章内容<textarea id="articleContentInput" maxlength="12000" rows="14" placeholder="输入比赛中需要完整打出的正文或代码……" required></textarea></label>
+        <div class="article-form-footer"><span id="articleContentCount">0 / 12000 字符</span><button class="primary-btn" id="saveArticleButton" type="submit"><span>保存文章</span><b>✓</b></button></div>
+      </form>
+      <div class="article-library">
+        <div class="article-library-toolbar"><div><strong>文章库</strong><span id="articleLibrarySummary">正在读取…</span></div><label>筛选<select id="articleCategoryFilter"><option value="全部">全部分类</option><option value="中文">中文</option><option value="英文">英文</option><option value="代码">代码</option></select></label></div>
+        <div class="article-list" id="articleList"></div>
+      </div>
+    </div>
+  </section>
+  <section class="panel admin-panel hidden" id="jobsPanel"><div class="panel-heading"><div><span class="section-number">04</span><h2>生成记录</h2></div><button class="text-btn" id="refreshAdminJobs">刷新</button></div><div class="table-wrap"><table><thead><tr><th>题目</th><th>用户 ID</th><th>组数</th><th>状态</th><th>创建时间</th><th>错误</th></tr></thead><tbody id="jobsBody"></tbody></table></div></section>
 </main>
 <section id="jobDetailModal" class="modal-view hidden" aria-live="polite">
   <div class="panel result-panel admin-job-detail">

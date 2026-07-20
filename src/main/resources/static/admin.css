@@ -1,1 +1,215 @@
 .admin-body{min-height:100vh}.admin-main{max-width:1180px;margin:0 auto;padding:54px 0 80px}.admin-hero{display:flex;align-items:end;justify-content:space-between;margin-bottom:38px}.admin-hero h1{font:500 54px Georgia,"Songti SC",serif;margin:11px 0 5px}.admin-hero p{color:var(--muted);margin:0}.stats{display:flex;background:var(--green);color:white;border-radius:14px;overflow:hidden}.stats div{min-width:120px;padding:19px 23px;border-left:1px solid rgba(255,255,255,.14)}.stats div:first-child{border:0}.stats strong{display:block;color:var(--lime);font:500 25px Georgia,serif}.stats span{font-size:10px;color:#cbd8cf}.admin-tabs{display:flex;gap:7px;margin-bottom:16px}.admin-tabs button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 16px;cursor:pointer;color:var(--muted)}.admin-tabs button.active{background:var(--green);border-color:var(--green);color:white}.admin-panel{padding:28px;box-shadow:none}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--muted);font-weight:500;padding:11px;border-bottom:1px solid var(--line)}td{padding:13px 11px;border-bottom:1px solid #ecece4;max-width:260px}td.error-cell{color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.badge{display:inline-block;padding:4px 8px;border-radius:10px;background:#e9eee8;color:var(--green);font-size:10px}.badge.off{background:#f6e5e2;color:var(--red)}.mini-btn{border:1px solid var(--line);background:white;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:11px;margin-right:6px}.quota-input{width:88px;border:1px solid var(--line);background:#faf9f4;border-radius:7px;padding:7px 8px;outline:none}.job-title-btn{border:0;background:transparent;color:var(--green);font-weight:800;padding:0;cursor:pointer;text-align:left}.job-title-btn:hover{text-decoration:underline}.admin-job-detail{width:min(920px,100%)}.admin-job-detail .review-grid{grid-template-columns:1fr}.admin-job-detail h2{word-break:break-word}.settings-form{max-width:650px;display:grid;gap:18px}.settings-form label{display:grid;gap:7px;font-size:12px;color:var(--muted)}.settings-form input{border:1px solid var(--line);background:#faf9f4;border-radius:9px;padding:12px;outline:none}.settings-form small{font-size:10px}.settings-form .primary-btn{width:190px;margin-top:8px}@media(max-width:900px){.admin-main{margin:0 18px}.admin-hero{align-items:start;gap:25px;flex-direction:column}.stats{width:100%}.stats div{min-width:0;flex:1}}
+
+.article-manager {
+  display: grid;
+  grid-template-columns: minmax(330px, .85fr) minmax(420px, 1.3fr);
+  gap: 28px;
+  margin-top: 22px;
+}
+
+.article-form {
+  align-self: start;
+  display: grid;
+  gap: 15px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #faf9f4;
+}
+
+.article-form-heading,
+.article-form-footer,
+.article-library-toolbar,
+.article-row-heading,
+.article-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.article-form-heading span {
+  color: var(--green);
+  font: 800 9px ui-monospace, monospace;
+  letter-spacing: 1px;
+}
+
+.article-form-heading h3 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.article-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.article-form input,
+.article-form select,
+.article-form textarea,
+.article-library-toolbar select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: white;
+  color: var(--ink);
+  padding: 10px 11px;
+}
+
+.article-form textarea {
+  min-height: 260px;
+  resize: vertical;
+  font: 13px/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  tab-size: 4;
+}
+
+.article-form input:focus,
+.article-form select:focus,
+.article-form textarea:focus,
+.article-library-toolbar select:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(37, 73, 55, .08);
+}
+
+.article-form-footer > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.article-form-footer .primary-btn {
+  min-width: 140px;
+}
+
+.article-library {
+  min-width: 0;
+}
+
+.article-library-toolbar {
+  min-height: 48px;
+  margin-bottom: 10px;
+}
+
+.article-library-toolbar > div {
+  display: grid;
+  gap: 3px;
+}
+
+.article-library-toolbar strong {
+  font-size: 15px;
+}
+
+.article-library-toolbar span,
+.article-library-toolbar label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.article-library-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.article-library-toolbar select {
+  width: auto;
+  min-width: 110px;
+  padding: 7px 9px;
+}
+
+.article-list {
+  display: grid;
+  gap: 9px;
+  max-height: 600px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.article-row {
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+}
+
+.article-row-heading > div {
+  min-width: 0;
+}
+
+.article-row h4 {
+  overflow: hidden;
+  margin: 0 0 5px;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.article-category {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #edf1e2;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.article-category.英文 { background: #e8f2f2; color: #327a82; }
+.article-category.代码 { background: #f9ece8; color: #a84d40; }
+
+.article-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font: 10px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.article-row-actions {
+  flex-shrink: 0;
+  justify-content: end;
+}
+
+.article-row-actions button {
+  margin: 0;
+}
+
+.article-row-actions .delete-article {
+  color: var(--red);
+}
+
+.article-list-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media(max-width:900px) {
+  .article-manager { grid-template-columns: 1fr; }
+  .article-list { max-height: none; }
+}
+
+@media(max-width:620px) {
+  .stats { flex-wrap: wrap; }
+  .stats div { flex-basis: 50%; }
+  .admin-tabs { overflow-x: auto; }
+  .admin-tabs button { flex: 0 0 auto; }
+  .article-form-footer { align-items: stretch; flex-direction: column; }
+}

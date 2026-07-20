@@ -1,4 +1,5 @@
 const typing$ = (selector) => document.querySelector(selector);
+const TYPING_TAB_WIDTH = 4;
 
 const typingState = {
   user: null,
@@ -50,6 +51,7 @@ function bindTypingEvents() {
   typing$('#articleSelect').onchange = updateArticleMeta;
   typing$('#copyInviteButton').onclick = copyInviteCode;
   typing$('#rotateInviteButton').onclick = rotateInviteCode;
+  typing$('#endBattleButton').onclick = endBattle;
   typing$('#resetBattleButton').onclick = resetBattle;
   typing$('#closeRoomButton').onclick = closeRoom;
   typing$('#backToLobbyButton').onclick = leaveRoomView;
@@ -59,6 +61,7 @@ function bindTypingEvents() {
     submitTypingInput();
   });
   typing$('#typingInput').addEventListener('input', submitTypingInput);
+  typing$('#typingInput').addEventListener('keydown', handleTypingKeydown);
   typing$('#typingInput').addEventListener('paste', blockInsertedContent);
   typing$('#typingInput').addEventListener('drop', blockInsertedContent);
   typing$('#typingInput').addEventListener('focus', moveCaretToEnd);
@@ -313,11 +316,13 @@ function renderOwnerControls(room) {
   if (!room.owner) return;
   typing$('#inviteCode').textContent = room.inviteCode || '------';
   const waiting = room.state === 'WAITING';
+  const activeBattle = room.state === 'COUNTDOWN' || room.state === 'RUNNING';
   typing$('#battleForm').classList.toggle('hidden', room.state === 'FINISHED');
+  typing$('#endBattleButton').classList.toggle('hidden', !activeBattle);
   typing$('#resetBattleButton').classList.toggle('hidden', room.state !== 'FINISHED');
 
   const signature = [room.state, ...room.members.map(member => `${member.memberId}:${member.online}`),
-    ...room.articles.map(article => article.id)].join('|');
+    ...room.articles.map(article => `${article.id}:${article.title}:${article.category}:${article.length}`)].join('|');
   if (signature !== typingState.controlSignature) {
     const oldLeft = typing$('#leftPlayerSelect').value;
     const oldRight = typing$('#rightPlayerSelect').value;
@@ -328,9 +333,14 @@ function renderOwnerControls(room) {
     ).join('');
     typing$('#leftPlayerSelect').innerHTML = `<option value="">选择选手</option>${options}`;
     typing$('#rightPlayerSelect').innerHTML = `<option value="">选择选手</option>${options}`;
-    typing$('#articleSelect').innerHTML = room.articles.map(article =>
-      `<option value="${escapeAttr(article.id)}">${escapeHtml(article.title)} · ${escapeHtml(article.category)}</option>`
-    ).join('');
+    const categoryOrder = ['中文', '英文', '代码'];
+    typing$('#articleSelect').innerHTML = categoryOrder.map(category => {
+      const items = room.articles.filter(article => article.category === category);
+      if (!items.length) return '';
+      return `<optgroup label="${category}">${items.map(article =>
+        `<option value="${escapeAttr(article.id)}">${escapeHtml(article.title)}</option>`
+      ).join('')}</optgroup>`;
+    }).join('');
     typing$('#leftPlayerSelect').value = room.members.some(member => member.memberId === oldLeft && member.online)
       ? oldLeft : onlineMembers[0]?.memberId || '';
     typing$('#rightPlayerSelect').value = room.members.some(member => member.memberId === oldRight && member.online && member.memberId !== typing$('#leftPlayerSelect').value)
@@ -363,7 +373,7 @@ function renderHistory(room) {
   typing$('#historyPanel').classList.toggle('hidden', !history.length);
   typing$('#historyList').innerHTML = history.map(item => `
     <div class="history-item">
-      <strong>${item.winnerName ? `${escapeHtml(item.winnerName)} 获胜` : '本局平手'}</strong>
+      <strong>${item.finishReason === 'MANUAL' ? '本局已手动结束' : item.winnerName ? `${escapeHtml(item.winnerName)} 获胜` : '本局平手'}</strong>
       <span>${escapeHtml(item.articleTitle)} · ${finishReasonLabel(item.finishReason)}</span>
       <span>${escapeHtml(item.left.displayName)} ${item.left.cpm} CPM / ${escapeHtml(item.right.displayName)} ${item.right.cpm} CPM</span>
     </div>
@@ -379,6 +389,7 @@ function renderBattle(room) {
   typing$('#resultStrip').classList.toggle('hidden', !finished);
 
   if (!battle) {
+    typing$('.arena').classList.remove('code-article');
     typing$('#articleCategory').textContent = '等待房主设置';
     typing$('#articleTitle').textContent = '比赛尚未开始';
     resetPlayerScreen(typing$('#leftPlayerScreen'), '左侧选手');
@@ -390,12 +401,14 @@ function renderBattle(room) {
 
   typing$('#articleCategory').textContent = battle.article.category;
   typing$('#articleTitle').textContent = battle.article.title;
+  typing$('.arena').classList.toggle('code-article', battle.article.category === '代码');
   renderPlayer(typing$('#leftPlayerScreen'), battle.left, battle.article.content, room.state, battle.winnerId);
   renderPlayer(typing$('#rightPlayerScreen'), battle.right, battle.article.content, room.state, battle.winnerId);
   typing$('#countdownOverlay').classList.toggle('hidden', !countdown);
 
   if (finished) {
-    const winnerText = battle.winnerName ? `${battle.winnerName} 获胜` : '本局平手';
+    const winnerText = battle.finishReason === 'MANUAL' ? '本局已手动结束'
+      : battle.winnerName ? `${battle.winnerName} 获胜` : '本局平手';
     typing$('#resultStrip').innerHTML = `<strong>${escapeHtml(winnerText)}</strong> · ${finishReasonLabel(battle.finishReason)} · ${formatDuration(Math.max(battle.left.elapsedMillis, battle.right.elapsedMillis))}`;
   }
 
@@ -404,7 +417,7 @@ function renderBattle(room) {
   if (running && room.canType) {
     const own = battle.left.memberId === room.selfMemberId ? battle.left : battle.right;
     const input = typing$('#typingInput');
-    input.maxLength = battle.article.length + 1;
+    input.removeAttribute('maxlength');
     if (!typingState.composing && Date.now() - typingState.lastLocalInputAt > 120 && input.value !== own.input) {
       input.value = own.input;
     }
@@ -464,12 +477,44 @@ function submitTypingInput() {
   const input = typing$('#typingInput');
   let value = input.value;
   const correct = commonPrefixLength(value, article);
-  if (correct < value.length) value = value.slice(0, correct + 1);
-  if (value.length > article.length + 1) value = value.slice(0, article.length + 1);
+  if (correct < value.length) {
+    const wrongCharacter = Array.from(value.slice(correct))[0] || '';
+    value = value.slice(0, correct) + wrongCharacter;
+  }
   if (input.value !== value) input.value = value;
   moveCaretToEnd();
   typingState.lastLocalInputAt = Date.now();
   sendSocketMessage({type: 'typing.input', sequence: ++typingState.sequence, text: value});
+}
+
+function handleTypingKeydown(event) {
+  if (event.key !== 'Tab' || !typingState.room?.canType || typingState.room.state !== 'RUNNING') return;
+  event.preventDefault();
+  if (typingState.composing) return;
+
+  const article = typingState.room.battle?.article?.content;
+  const input = typing$('#typingInput');
+  if (!article || !input) return;
+
+  if (event.shiftKey) {
+    const trailingSpaces = Math.min(TYPING_TAB_WIDTH, input.value.length - input.value.trimEnd().length);
+    if (!trailingSpaces) return;
+    input.value = input.value.slice(0, -trailingSpaces);
+  } else {
+    const correct = commonPrefixLength(input.value, article);
+    if (correct < input.value.length) {
+      typingToast('请先退格修正当前错字。');
+      return;
+    }
+    let expectedSpaces = 0;
+    while (expectedSpaces < TYPING_TAB_WIDTH && article[correct + expectedSpaces] === ' ') {
+      expectedSpaces++;
+    }
+    input.value += ' '.repeat(expectedSpaces || TYPING_TAB_WIDTH);
+  }
+
+  moveCaretToEnd();
+  submitTypingInput();
 }
 
 function sendSocketMessage(message) {
@@ -521,6 +566,23 @@ async function resetBattle() {
     applyRoomSnapshot(room);
   } catch (error) {
     typingToast(error.message);
+  }
+}
+
+async function endBattle() {
+  const room = typingState.room;
+  if (!room?.owner || !['COUNTDOWN', 'RUNNING'].includes(room.state)) return;
+  if (!confirm('确定手动结束本局比赛吗？本局不会判定胜者。')) return;
+  const button = typing$('#endBattleButton');
+  setButtonBusy(button, true, '结束中');
+  try {
+    const snapshot = await typingApi(`/api/tools/typing/rooms/${encodeURIComponent(room.roomId)}/finish`, {method: 'POST'});
+    applyRoomSnapshot(snapshot);
+    typingToast('本局比赛已手动结束。');
+  } catch (error) {
+    typingToast(error.message);
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
@@ -577,7 +639,7 @@ function selectRandomArticle() {
 
 function updateArticleMeta() {
   const article = typingState.room?.articles?.find(item => item.id === typing$('#articleSelect').value);
-  typing$('#articleMeta').textContent = article ? `${article.category} · ${article.length} 字 · 正文将在开赛时显示` : '请选择比赛文章';
+  typing$('#articleMeta').textContent = article ? `${article.category} · ${article.length} 字符 · 正文将在开赛时显示` : '请选择比赛文章';
 }
 
 function updateLocalClock() {
@@ -660,7 +722,9 @@ function stateLabel(state) {
 }
 
 function finishReasonLabel(reason) {
-  return reason === 'COMPLETED' ? '完成全文' : reason === 'TIMEOUT' ? '时间到' : '比赛结束';
+  return reason === 'COMPLETED' ? '完成全文'
+    : reason === 'TIMEOUT' ? '时间到'
+      : reason === 'MANUAL' ? '房主手动结束' : '比赛结束';
 }
 
 function formatClock(milliseconds) {
@@ -674,9 +738,16 @@ function formatDuration(milliseconds) {
 }
 
 function commonPrefixLength(left, right) {
-  let index = 0;
-  while (index < left.length && index < right.length && left[index] === right[index]) index++;
-  return index;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    const leftCodePoint = left.codePointAt(leftIndex);
+    const rightCodePoint = right.codePointAt(rightIndex);
+    if (leftCodePoint !== rightCodePoint) break;
+    leftIndex += leftCodePoint > 0xFFFF ? 2 : 1;
+    rightIndex += rightCodePoint > 0xFFFF ? 2 : 1;
+  }
+  return leftIndex;
 }
 
 function typingToast(message) {

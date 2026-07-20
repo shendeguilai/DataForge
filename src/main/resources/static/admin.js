@@ -1,6 +1,7 @@
 const $a = s => document.querySelector(s);
 let adminSettings = {dailyGenerationLimit: 30};
 let adminJobs = [];
+let adminArticles = [];
 
 async function request(url, options = {}) {
   const r = await fetch(url, options);
@@ -16,7 +17,7 @@ async function init() {
     $a('#adminName').textContent = me.username;
     bind();
     await loadConfig();
-    await Promise.all([loadUsers(), loadJobs()]);
+    await Promise.all([loadUsers(), loadJobs(), loadArticles()]);
   } catch (e) {
     location.href = '/';
   }
@@ -26,6 +27,11 @@ function bind() {
   document.querySelectorAll('[data-panel]').forEach(b => b.onclick = () => switchPanel(b.dataset.panel));
   $a('#aiForm').onsubmit = saveConfig;
   $a('#refreshAdminJobs').onclick = loadJobs;
+  $a('#articleForm').onsubmit = saveArticle;
+  $a('#newArticleButton').onclick = () => resetArticleForm(true);
+  $a('#cancelArticleEdit').onclick = () => resetArticleForm();
+  $a('#articleCategoryFilter').onchange = renderArticles;
+  $a('#articleContentInput').oninput = updateArticleContentCount;
   $a('#closeJobDetail').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   $a('#closeJobDetailX').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   document.querySelectorAll('[data-copy-target]').forEach(b => b.onclick = () => copyTargetText(b.dataset.copyTarget));
@@ -34,7 +40,7 @@ function bind() {
 
 function switchPanel(name) {
   document.querySelectorAll('[data-panel]').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
-  ['users','ai','jobs'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
+  ['users','ai','articles','jobs'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
 }
 
 async function loadUsers() {
@@ -82,6 +88,119 @@ async function saveConfig(e) {
     toast('配置已保存');
   } catch (err) {
     toast(err.message);
+  }
+}
+
+async function loadArticles() {
+  adminArticles = await request('/api/admin/typing-articles');
+  $a('#articleTotal').textContent = adminArticles.length;
+  const counts = ['中文', '英文', '代码'].map(category =>
+    `${category} ${adminArticles.filter(article => article.category === category).length} 篇`
+  );
+  $a('#articleLibrarySummary').textContent = counts.join(' · ');
+  renderArticles();
+}
+
+function renderArticles() {
+  const category = $a('#articleCategoryFilter').value;
+  const articles = category === '全部' ? adminArticles : adminArticles.filter(article => article.category === category);
+  if (!articles.length) {
+    $a('#articleList').innerHTML = '<div class="article-list-empty">当前分类还没有文章</div>';
+    return;
+  }
+  $a('#articleList').innerHTML = articles.map(article => `
+    <article class="article-row">
+      <div class="article-row-heading">
+        <div>
+          <h4 title="${esc(article.title)}">${esc(article.title)}</h4>
+          <div class="article-row-meta"><span class="article-category ${esc(article.category)}">${esc(article.category)}</span><span>${article.length} 字符</span></div>
+        </div>
+        <div class="article-row-actions">
+          <button class="mini-btn" type="button" data-edit-article="${esc(article.id)}">编辑</button>
+          <button class="mini-btn delete-article" type="button" data-delete-article="${esc(article.id)}">删除</button>
+        </div>
+      </div>
+      <p class="article-preview">${esc(article.content)}</p>
+    </article>
+  `).join('');
+  document.querySelectorAll('[data-edit-article]').forEach(button => {
+    button.onclick = () => editArticle(button.dataset.editArticle);
+  });
+  document.querySelectorAll('[data-delete-article]').forEach(button => {
+    button.onclick = () => deleteArticle(button.dataset.deleteArticle);
+  });
+}
+
+function editArticle(id) {
+  const article = adminArticles.find(item => item.id === id);
+  if (!article) { toast('文章不存在或列表已刷新'); return; }
+  $a('#articleId').value = article.id;
+  $a('#articleTitleInput').value = article.title;
+  $a('#articleCategoryInput').value = article.category;
+  $a('#articleContentInput').value = article.content;
+  $a('#articleFormMode').textContent = 'EDIT ARTICLE';
+  $a('#articleFormTitle').textContent = '修改文章';
+  $a('#saveArticleButton span').textContent = '保存修改';
+  $a('#cancelArticleEdit').classList.remove('hidden');
+  updateArticleContentCount();
+  $a('#articleTitleInput').focus();
+  $a('#articleForm').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function resetArticleForm(focus = false) {
+  $a('#articleForm').reset();
+  $a('#articleId').value = '';
+  $a('#articleCategoryInput').value = '中文';
+  $a('#articleFormMode').textContent = 'NEW ARTICLE';
+  $a('#articleFormTitle').textContent = '新增文章';
+  $a('#saveArticleButton span').textContent = '保存文章';
+  $a('#cancelArticleEdit').classList.add('hidden');
+  updateArticleContentCount();
+  if (focus) {
+    $a('#articleTitleInput').focus();
+    $a('#articleForm').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+}
+
+function updateArticleContentCount() {
+  $a('#articleContentCount').textContent = `${$a('#articleContentInput').value.length} / 12000 字符`;
+}
+
+async function saveArticle(event) {
+  event.preventDefault();
+  const id = $a('#articleId').value;
+  const button = $a('#saveArticleButton');
+  button.disabled = true;
+  try {
+    await request(id ? `/api/admin/typing-articles/${encodeURIComponent(id)}` : '/api/admin/typing-articles', {
+      method: id ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        title: $a('#articleTitleInput').value,
+        category: $a('#articleCategoryInput').value,
+        content: $a('#articleContentInput').value
+      })
+    });
+    toast(id ? '文章修改已保存' : '文章已添加');
+    resetArticleForm();
+    await loadArticles();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function deleteArticle(id) {
+  const article = adminArticles.find(item => item.id === id);
+  if (!article || !confirm(`确定删除文章「${article.title}」吗？`)) return;
+  try {
+    await request(`/api/admin/typing-articles/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    if ($a('#articleId').value === id) resetArticleForm();
+    toast('文章已删除');
+    await loadArticles();
+  } catch (error) {
+    toast(error.message);
   }
 }
 

@@ -2,7 +2,10 @@ package cn.datacraft.web;
 
 import cn.datacraft.ai.AiConfigService;
 import cn.datacraft.job.*;
+import cn.datacraft.typing.TypingArticleLibrary;
+import cn.datacraft.typing.TypingArticleLibrary.Article;
 import cn.datacraft.user.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -14,8 +17,13 @@ public class AdminController {
     private final UserService users;
     private final JobService jobs;
     private final AiConfigService aiConfig;
-    public AdminController(UserService users, JobService jobs, AiConfigService aiConfig) {
-        this.users = users; this.jobs = jobs; this.aiConfig = aiConfig;
+    private final TypingArticleLibrary typingArticles;
+    public AdminController(UserService users, JobService jobs, AiConfigService aiConfig,
+                           TypingArticleLibrary typingArticles) {
+        this.users = users;
+        this.jobs = jobs;
+        this.aiConfig = aiConfig;
+        this.typingArticles = typingArticles;
     }
 
     @GetMapping("/users")
@@ -60,6 +68,29 @@ public class AdminController {
         return aiConfig.update(request.baseUrl, request.model, request.apiKey, request.dailyGenerationLimit);
     }
 
+    @GetMapping("/typing-articles")
+    public List<Article> typingArticles() {
+        return typingArticles.all();
+    }
+
+    @PostMapping("/typing-articles")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Article createTypingArticle(@RequestBody TypingArticleRequest request) {
+        return typingArticles.create(request.title, request.category, request.content);
+    }
+
+    @PutMapping("/typing-articles/{id}")
+    public Article updateTypingArticle(@PathVariable String id, @RequestBody TypingArticleRequest request) {
+        return typingArticles.update(id, request.title, request.category, request.content);
+    }
+
+    @DeleteMapping("/typing-articles/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTypingArticle(@PathVariable String id) {
+        typingArticles.delete(id);
+    }
+
     public static class UserStateRequest { public Boolean enabled; public Integer dailyGenerationLimit; }
     public static class AiConfigRequest { public String baseUrl, model, apiKey; public Integer dailyGenerationLimit; }
+    public static class TypingArticleRequest { public String title, category, content; }
 }

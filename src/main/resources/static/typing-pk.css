@@ -380,6 +380,33 @@
   min-height: 44px;
 }
 
+.manual-finish-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  padding: 0 13px;
+  border: 1px solid #dfb4aa;
+  border-radius: 8px;
+  background: var(--duel-coral-soft);
+  color: var(--duel-coral);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.manual-finish-btn:hover {
+  border-color: var(--duel-coral);
+  background: #f6dfd9;
+}
+
+.manual-finish-btn:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .member-list,
 .history-list {
   display: grid;
@@ -560,8 +587,17 @@
   background: #faf9f4;
   font: 16px/2 "PingFang SC", "Microsoft YaHei", sans-serif;
   text-align: left;
+  white-space: pre-wrap;
   word-break: break-all;
   user-select: none;
+}
+
+.arena.code-article .typing-copy,
+.arena.code-article .typing-dock textarea {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  tab-size: 4;
 }
 
 .empty-copy {

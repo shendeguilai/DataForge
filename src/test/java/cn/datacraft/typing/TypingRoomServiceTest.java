@@ -5,6 +5,7 @@ import cn.datacraft.typing.TypingDtos.JoinResponse;
 import cn.datacraft.typing.TypingDtos.RoomView;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.function.Supplier;
 
@@ -75,6 +76,27 @@ class TypingRoomServiceTest {
     }
 
     @Test
+    void onlyOwnerCanManuallyFinishCountdownOrRunningBattle() {
+        rooms = service(3, 300);
+        RoomView created = rooms.createRoom("手动结束测试", "owner");
+        rooms.connect(created.roomId, "owner", null, "owner-manual-finish");
+        JoinResponse joined = rooms.join(created.roomId, "guest", created.inviteCode, "127.0.0.6");
+        rooms.connect(created.roomId, null, joined.token, "guest-manual-finish");
+        rooms.start(created.roomId, "owner", created.selfMemberId, joined.memberId, "testing");
+
+        assertThrows(AccessDeniedException.class, () -> rooms.manualFinish(created.roomId, "guest"));
+        RoomView finished = rooms.manualFinish(created.roomId, "owner");
+        assertEquals("FINISHED", finished.state);
+        assertEquals("MANUAL", finished.battle.finishReason);
+        assertNull(finished.battle.winnerId);
+        assertEquals("MANUAL", finished.history.get(0).finishReason);
+
+        RoomView waiting = rooms.reset(created.roomId, "owner");
+        assertEquals("WAITING", waiting.state);
+        assertNull(waiting.battle);
+    }
+
+    @Test
     void invitationAndRoomMembershipRulesAreEnforced() {
         rooms = service(3, 300);
         RoomView created = rooms.createRoom("公开训练", "owner");
@@ -89,12 +111,55 @@ class TypingRoomServiceTest {
     }
 
     @Test
-    void bundledArticlesStayWithinThePlannedLength() {
+    void emojiMistakeCanBeDeletedAndTypingCanContinueImmediately() throws Exception {
+        rooms = service(0, 5);
+        RoomView created = rooms.createRoom("Unicode 测试", "teacher");
+        ConnectionIdentity owner = rooms.connect(created.roomId, "teacher", null, "owner-unicode");
+        JoinResponse joined = rooms.join(created.roomId, "guest", created.inviteCode, "127.0.0.5");
+        rooms.connect(created.roomId, null, joined.token, "guest-unicode");
+        rooms.start(created.roomId, "teacher", created.selfMemberId, joined.memberId, "binary-search");
+
+        RoomView running = await(() -> rooms.roomView(created.roomId, "teacher", null), "RUNNING", 1000);
+        String article = running.battle.article.content;
+
+        assertTrue(rooms.submitInput(owner, 1, "🌲"));
+        RoomView mistaken = rooms.roomView(created.roomId, "teacher", null);
+        assertEquals("🌲", mistaken.battle.left.input);
+        assertEquals(1, mistaken.battle.left.errors);
+        assertEquals(0, mistaken.battle.left.correctCount);
+
+        assertTrue(rooms.submitInput(owner, 2, ""));
+        assertTrue(rooms.submitInput(owner, 3, article.substring(0, 1)));
+        RoomView recovered = rooms.roomView(created.roomId, "teacher", null);
+        assertEquals(article.substring(0, 1), recovered.battle.left.input);
+        assertEquals(1, recovered.battle.left.correctCount);
+        assertEquals(50.0, recovered.battle.left.accuracy);
+
+        assertTrue(rooms.submitInput(owner, 4, article.substring(0, 1) + "\uD83C"));
+        RoomView malformed = rooms.roomView(created.roomId, "teacher", null);
+        assertEquals(article.substring(0, 1) + "\uFFFD", malformed.battle.left.input);
+        assertTrue(rooms.submitInput(owner, 5, article.substring(0, 1)));
+        assertTrue(rooms.submitInput(owner, 6, article.substring(0, 2)));
+        assertEquals(2, rooms.roomView(created.roomId, "teacher", null).battle.left.correctCount);
+    }
+
+    @Test
+    void bundledArticlesCoverChineseEnglishAndCode() {
         TypingArticleLibrary library = new TypingArticleLibrary();
-        assertEquals(10, library.all().size());
+        assertEquals(18, library.all().size());
+        assertEquals(10, library.all().stream().filter(article -> "中文".equals(article.getCategory())).count());
+        assertEquals(4, library.all().stream().filter(article -> "英文".equals(article.getCategory())).count());
+        assertEquals(4, library.all().stream().filter(article -> "代码".equals(article.getCategory())).count());
         library.all().forEach(article -> {
-            assertTrue(article.getLength() >= 180, article.getId());
-            assertTrue(article.getLength() <= 220, article.getId());
+            assertFalse(article.getTitle().isBlank(), article.getId());
+            assertFalse(article.getContent().isBlank(), article.getId());
+        });
+        assertTrue(library.require("code-prefix-sum").getContent().contains("sum[r] - sum[l - 1]"));
+        library.all().stream().filter(article -> "代码".equals(article.getCategory())).forEach(article -> {
+            assertFalse(article.getContent().contains("vector<"), article.getId());
+            assertFalse(article.getContent().matches("(?s).*\\bauto\\b.*"), article.getId());
+            assertFalse(article.getContent().matches("(?s).*for \\([^;]*:.*"), article.getId());
+            assertTrue(article.getContent().contains("\n    "), article.getId());
         });
     }
 

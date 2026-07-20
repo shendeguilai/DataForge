@@ -1,9 +1,11 @@
 package cn.datacraft.typing;
 
 import cn.datacraft.typing.TypingArticleLibrary.Article;
+import cn.datacraft.typing.TypingArticleLibrary.ArticlesChangedEvent;
 import cn.datacraft.typing.TypingDtos.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -60,6 +62,14 @@ public class TypingRoomService {
                         .thenComparing(room -> room.name.toLowerCase(Locale.ROOT)))
                 .map(this::toPublicView)
                 .collect(Collectors.toList());
+    }
+
+    @EventListener
+    public void onArticlesChanged(ArticlesChangedEvent ignored) {
+        rooms.values().stream()
+                .filter(room -> room.state != RoomState.CLOSED)
+                .map(room -> room.id)
+                .forEach(this::publishChanged);
     }
 
     public RoomView createRoom(String rawName, String ownerUsername) {
@@ -190,7 +200,7 @@ public class TypingRoomService {
             if (!left.isOnline() || !right.isOnline()) throw new IllegalStateException("两名参赛者都必须在线");
             Article article = "random".equals(articleId) ? articles.random() : articles.require(articleId);
             long now = System.currentTimeMillis();
-            room.battle = new Battle(newId(), article.getId(), left.id, right.id, now + countdownMillis);
+            room.battle = new Battle(newId(), article, left.id, right.id, now + countdownMillis);
             roundId = room.battle.roundId;
             room.state = RoomState.COUNTDOWN;
             room.lastActivity = now;
@@ -207,6 +217,18 @@ public class TypingRoomService {
             room.state = RoomState.WAITING;
             room.battle = null;
             room.lastActivity = System.currentTimeMillis();
+        }
+        publishChanged(roomId);
+        return roomView(roomId, ownerUsername, null);
+    }
+
+    public RoomView manualFinish(String roomId, String ownerUsername) {
+        Room room = requireOwnedRoom(roomId, ownerUsername);
+        synchronized (room) {
+            if ((room.state != RoomState.COUNTDOWN && room.state != RoomState.RUNNING) || room.battle == null) {
+                throw new IllegalStateException("当前没有可以结束的比赛");
+            }
+            finishLocked(room, null, "MANUAL", System.currentTimeMillis());
         }
         publishChanged(roomId);
         return roomView(roomId, ownerUsername, null);
@@ -259,44 +281,42 @@ public class TypingRoomService {
             Long lastSequence = member.sequences.get(identity.connectionId);
             if (lastSequence == null) throw new AccessDeniedException("连接已失效");
             if (sequence <= lastSequence) return false;
-            long now = System.currentTimeMillis();
-            if (stats.lastInputAt > 0 && now - stats.lastInputAt < 12) return false;
-            member.sequences.put(identity.connectionId, sequence);
-            stats.lastInputAt = now;
 
-            Article article = articles.require(room.battle.articleId);
-            String input = requestedInput == null ? "" : requestedInput;
-            if (input.length() > article.getLength() + 1) throw new IllegalArgumentException("输入内容过长");
+            Article article = room.battle.article;
+            String input = sanitizeUnicode(requestedInput == null ? "" : requestedInput);
             String previous = stats.input;
-            if (!input.startsWith(previous) && !previous.startsWith(input)) {
+            if (input.equals(previous)) return false;
+
+            int articleCodePoints = article.getContent().codePointCount(0, article.getLength());
+            if (input.codePointCount(0, input.length()) > articleCodePoints + 1) {
+                throw new IllegalArgumentException("输入内容过长");
+            }
+
+            int previousCorrect = commonPrefix(previous, article.getContent());
+            boolean deletion = previous.startsWith(input);
+            int sharedPrefix = commonPrefix(previous, input);
+            if (!deletion && sharedPrefix < previousCorrect) {
                 throw new IllegalArgumentException("只能从末尾继续输入或退格修正");
             }
 
-            if (previous.startsWith(input)) {
+            int attemptedCount = deletion ? 0 : input.codePointCount(sharedPrefix, input.length());
+            if (attemptedCount > MAX_INPUT_DELTA) throw new IllegalArgumentException("单次输入字符过多");
+
+            long now = System.currentTimeMillis();
+            member.sequences.put(identity.connectionId, sequence);
+            stats.lastInputAt = now;
+
+            if (deletion) {
                 stats.input = input;
                 stats.correctCount = commonPrefix(input, article.getContent());
                 changed = true;
             } else {
-                String added = input.substring(previous.length());
-                if (added.length() > MAX_INPUT_DELTA) throw new IllegalArgumentException("单次输入字符过多");
-                if (commonPrefix(previous, article.getContent()) < previous.length()) {
-                    throw new IllegalStateException("请先修正当前错字");
-                }
-                int acceptedLength = previous.length();
-                boolean mismatch = false;
-                for (int index = 0; index < added.length(); index++) {
-                    int articleIndex = previous.length() + index;
-                    stats.insertedCount++;
-                    if (!mismatch && articleIndex < article.getLength()
-                            && added.charAt(index) == article.getContent().charAt(articleIndex)) {
-                        acceptedLength++;
-                    } else {
-                        stats.errors++;
-                        if (!mismatch) acceptedLength++;
-                        mismatch = true;
-                    }
-                }
-                stats.input = input.substring(0, Math.min(input.length(), acceptedLength));
+                int inputCorrect = commonPrefix(input, article.getContent());
+                int gainedCorrect = inputCorrect <= previousCorrect ? 0
+                        : article.getContent().codePointCount(previousCorrect, inputCorrect);
+                stats.insertedCount += attemptedCount;
+                stats.errors += Math.max(0, attemptedCount - gainedCorrect);
+                stats.input = truncateAfterFirstMistake(input, article.getContent(), inputCorrect);
                 stats.correctCount = commonPrefix(stats.input, article.getContent());
                 changed = true;
             }
@@ -361,7 +381,7 @@ public class TypingRoomService {
         battle.winnerId = winnerId;
         battle.finishReason = reason;
         room.lastActivity = now;
-        Article article = articles.require(battle.articleId);
+        Article article = battle.article;
         Member winner = winnerId == null ? null : room.members.get(winnerId);
         room.history.addFirst(new HistoryView(battle.roundId, article.getTitle(), now,
                 winner == null ? null : winner.displayName, reason,
@@ -390,7 +410,7 @@ public class TypingRoomService {
 
     private BattleView toBattleView(Room room, long now) {
         Battle battle = room.battle;
-        Article article = articles.require(battle.articleId);
+        Article article = battle.article;
         boolean revealContent = room.state == RoomState.RUNNING || room.state == RoomState.FINISHED;
         Member winner = battle.winnerId == null ? null : room.members.get(battle.winnerId);
         return new BattleView(battle.roundId, battle.countdownEndsAt, battle.startedAt, battle.endsAt,
@@ -407,7 +427,7 @@ public class TypingRoomService {
                     : battle.finishedAt != null ? battle.finishedAt : now;
             elapsed = Math.max(0, Math.min(stop, battle.endsAt == null ? stop : battle.endsAt) - battle.startedAt);
         }
-        int length = articles.require(battle.articleId).getLength();
+        int length = battle.article.getLength();
         int progress = length == 0 ? 0 : (int) Math.round(stats.correctCount * 100.0 / length);
         int cpm = elapsed <= 0 ? 0 : (int) Math.round(stats.correctCount * 60_000.0 / Math.max(1000, elapsed));
         return new PlayerView(stats.memberId, member == null ? "已离开" : member.displayName,
@@ -528,10 +548,41 @@ public class TypingRoomService {
     }
 
     private static int commonPrefix(String left, String right) {
-        int length = Math.min(left.length(), right.length());
-        int index = 0;
-        while (index < length && left.charAt(index) == right.charAt(index)) index++;
-        return index;
+        int leftIndex = 0;
+        int rightIndex = 0;
+        while (leftIndex < left.length() && rightIndex < right.length()) {
+            int leftCodePoint = left.codePointAt(leftIndex);
+            int rightCodePoint = right.codePointAt(rightIndex);
+            if (leftCodePoint != rightCodePoint) break;
+            leftIndex += Character.charCount(leftCodePoint);
+            rightIndex += Character.charCount(rightCodePoint);
+        }
+        return leftIndex;
+    }
+
+    private static String truncateAfterFirstMistake(String input, String article, int correctLength) {
+        if (correctLength >= input.length()) return input;
+        int end = input.offsetByCodePoints(correctLength, 1);
+        return input.substring(0, end);
+    }
+
+    private static String sanitizeUnicode(String value) {
+        StringBuilder sanitized = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isHighSurrogate(current)) {
+                if (index + 1 < value.length() && Character.isLowSurrogate(value.charAt(index + 1))) {
+                    sanitized.append(current).append(value.charAt(++index));
+                } else {
+                    sanitized.append('\uFFFD');
+                }
+            } else if (Character.isLowSurrogate(current)) {
+                sanitized.append('\uFFFD');
+            } else {
+                sanitized.append(current);
+            }
+        }
+        return sanitized.toString();
     }
 
     private static int stateOrder(RoomState state) {
@@ -633,7 +684,7 @@ public class TypingRoomService {
 
     private static final class Battle {
         final String roundId;
-        final String articleId;
+        final Article article;
         final PlayerStats left;
         final PlayerStats right;
         final long countdownEndsAt;
@@ -643,9 +694,9 @@ public class TypingRoomService {
         String winnerId;
         String finishReason;
 
-        Battle(String roundId, String articleId, String leftId, String rightId, long countdownEndsAt) {
+        Battle(String roundId, Article article, String leftId, String rightId, long countdownEndsAt) {
             this.roundId = roundId;
-            this.articleId = articleId;
+            this.article = article;
             this.left = new PlayerStats(leftId);
             this.right = new PlayerStats(rightId);
             this.countdownEndsAt = countdownEndsAt;

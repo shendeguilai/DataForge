@@ -67,6 +67,11 @@ public class TypingRoomController {
         return rooms.reset(roomId, authentication.getName());
     }
 
+    @PostMapping("/{roomId}/finish")
+    public RoomView finish(@PathVariable String roomId, Authentication authentication) {
+        return rooms.manualFinish(roomId, authentication.getName());
+    }
+
     @PostMapping("/{roomId}/invite/rotate")
     public RoomView rotateInvite(@PathVariable String roomId, Authentication authentication) {
         return rooms.rotateInviteCode(roomId, authentication.getName());
