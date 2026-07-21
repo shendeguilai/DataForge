@@ -8,9 +8,9 @@ import org.springframework.security.core.context.*;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.*;
-import javax.validation.Valid;
-import javax.validation.constraints.NotBlank;
+import jakarta.servlet.http.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

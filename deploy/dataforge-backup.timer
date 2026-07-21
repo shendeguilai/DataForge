@@ -1,0 +1,11 @@
+[Unit]
+Description=Run DataForge backup every day at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=dataforge-backup.service
+
+[Install]
+WantedBy=timers.target

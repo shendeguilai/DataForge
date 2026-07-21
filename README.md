@@ -6,7 +6,7 @@
 
 - 邀请码注册、Session 登录与 BCrypt 密码哈希
 - 管理员后台：用户启停、AI 接口配置和全站任务记录
-- H2 文件数据库持久化用户、任务、题面、方案和 ZIP 路径
+- 开发环境使用 H2，生产环境使用 PostgreSQL + Flyway 持久化用户、任务、文章和 AI 配置
 - 用户只能查看和下载自己的任务，管理员可查看全站记录
 - 单页填写、方案确认、实时进度与 ZIP 下载流程
 - AI 分析前真实编译出题者的标准程序，并在页面展示编译错误
@@ -21,7 +21,7 @@
 
 ## 启动
 
-需要 Java 11+、Maven 和可从命令行调用的 `g++`。
+本地开发需要 Java 17+、Maven 和可从命令行调用的 `g++`。
 
 ```powershell
 mvn spring-boot:run
@@ -42,6 +42,8 @@ mvn spring-boot:run
 
 用户、任务和 AI 配置保存在 `data/`；生成源码和 ZIP 保存在 `runtime/`。只要这两个目录未被删除，服务重启后仍能查看记录并重复下载已完成的数据包。
 
+生产环境使用 PostgreSQL、Docker Compose、仓库外持久目录和 Flyway 数据库迁移。首次部署、H2 全量迁移、备份、GitHub 更新和回滚请严格按照 [生产部署与持续更新手册](docs/PRODUCTION_DEPLOYMENT.md) 操作。
+
 首次打开会预填“数列求和”演示题，可以不配置 AI 直接体验完整流程。
 
 ## 配置 AI
@@ -60,13 +62,12 @@ API Key 仅从服务端环境变量读取，不会发送到浏览器。
 ## 当前 MVP 边界
 
 - 当前执行器使用本机受限时间进程，尚未接入 Docker/gVisor 沙箱，不能开放给不可信公网用户。
-- ZIP 由本地磁盘提供；生产环境应改为 MinIO、OSS、COS 或 S3 的签名直链。
+- ZIP 由仓库外的宿主机持久目录提供；如果未来扩展为多实例，应改为 MinIO、OSS、COS 或 S3。
 - AI 返回的生成器仍可能存在语义问题，后续应增加独立 Validator 和小数据对拍。
 
 ## 下一步建议
 
-1. PostgreSQL 持久化任务与用户数据。
-2. Redis/BullMQ 或 RabbitMQ 拆分任务 Worker。
-3. Docker/gVisor 沙箱以及 CPU、内存、磁盘和网络隔离。
-4. MinIO/S3 分片上传与过期清理。
-5. 登录、额度、后台 AI 配置和任务管理。
+1. Redis/BullMQ 或 RabbitMQ 拆分任务 Worker。
+2. Docker/gVisor 沙箱以及 CPU、内存、磁盘和网络隔离。
+3. MinIO/S3 分片上传与过期清理。
+4. 指标、告警与集中日志。

@@ -1,0 +1,100 @@
+name: dataforge
+
+x-app-environment: &app-environment
+  SPRING_PROFILES_ACTIVE: prod
+  TZ: UTC
+  PORT: "8080"
+  DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+  DATABASE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER is required}
+  DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+  DATAFORGE_RUNTIME_DIR: /var/lib/dataforge/runtime
+  DATAFORGE_PROCESS_STACK_MB: ${DATAFORGE_PROCESS_STACK_MB:-256}
+  DAILY_GENERATION_LIMIT: ${DAILY_GENERATION_LIMIT:-30}
+  INVITE_CODE: ${INVITE_CODE:?INVITE_CODE is required}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+  DATAFORGE_SECRET: ${DATAFORGE_SECRET:?DATAFORGE_SECRET is required}
+  AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-deepseek-v4-pro}
+  ATCODER_COOKIE: ${ATCODER_COOKIE:-}
+  QUIZ_COUNTDOWN_SECONDS: ${QUIZ_COUNTDOWN_SECONDS:-3}
+  QUIZ_BUZZ_SECONDS: ${QUIZ_BUZZ_SECONDS:-15}
+  QUIZ_ROOM_EXPIRY_MINUTES: ${QUIZ_ROOM_EXPIRY_MINUTES:-30}
+  QUIZ_ROOM_CAPACITY: ${QUIZ_ROOM_CAPACITY:-60}
+
+x-app-base: &app-base
+  image: dataforge:${DATAFORGE_IMAGE_TAG:-local}
+  environment: *app-environment
+  volumes:
+    - ${DATAFORGE_RUNTIME_DIR_HOST:?DATAFORGE_RUNTIME_DIR_HOST is required}:/var/lib/dataforge/runtime
+  depends_on:
+    db:
+      condition: service_healthy
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  db:
+    image: postgres:17.10-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ${DATAFORGE_POSTGRES_DIR:?DATAFORGE_POSTGRES_DIR is required}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    <<: *app-base
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - ${PUBLIC_PORT:-8080}:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  importer:
+    <<: *app-base
+    profiles: ["tools"]
+    environment:
+      <<: *app-environment
+      DATAFORGE_BOOTSTRAP_ENABLED: "false"
+      DATAFORGE_LEGACY_IMPORT_ENABLED: "true"
+      DATAFORGE_LEGACY_IMPORT_H2_FILE: /migration/dataforge.mv.db
+      DATAFORGE_LEGACY_IMPORT_RUNTIME_DIR: /migration/runtime
+      DATAFORGE_LEGACY_IMPORT_OLD_SECRET: ${LEGACY_DATAFORGE_SECRET:-}
+      DATAFORGE_LEGACY_IMPORT_ALLOW_MISSING_ARTIFACTS: ${LEGACY_ALLOW_MISSING_ARTIFACTS:-false}
+    volumes:
+      - ${DATAFORGE_RUNTIME_DIR_HOST:?DATAFORGE_RUNTIME_DIR_HOST is required}:/var/lib/dataforge/runtime
+      - ${DATAFORGE_MIGRATION_DIR:?DATAFORGE_MIGRATION_DIR is required}:/migration:ro
+    command: ["--spring.main.web-application-type=none"]
+    restart: "no"
+
+  admin-reset:
+    <<: *app-base
+    profiles: ["tools"]
+    environment:
+      <<: *app-environment
+      DATAFORGE_BOOTSTRAP_ENABLED: "false"
+      DATAFORGE_ADMIN_RESET_ENABLED: "true"
+      DATAFORGE_ADMIN_RESET_USERNAME: ${DATAFORGE_ADMIN_RESET_USERNAME:-}
+      DATAFORGE_ADMIN_RESET_PASSWORD: ${DATAFORGE_ADMIN_RESET_PASSWORD:-}
+    command: ["--spring.main.web-application-type=none"]
+    restart: "no"

@@ -2,24 +2,28 @@ package cn.datacraft.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
 @Table(name = "user_accounts")
 public class UserAccount {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
-    @Column(nullable = false, unique = true, length = 40)
+    @Column(name = "username", nullable = false, unique = true, length = 40)
     private String username;
-    @JsonIgnore @Column(nullable = false, length = 100)
+    @JsonIgnore
+    @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
-    @Column(nullable = false, length = 16)
+    @Column(name = "role", nullable = false, length = 16)
     private String role = "USER";
-    @Column(nullable = false)
+    @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
+    @Column(name = "daily_generation_limit")
     private Integer dailyGenerationLimit;
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
     public Long getId() { return id; }

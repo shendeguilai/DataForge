@@ -13,6 +13,8 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  flyway:
+    enabled: false
   jackson:
     default-property-inclusion: non_null
   servlet:
@@ -40,3 +42,14 @@ dataforge:
     base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
     api-key: ${AI_API_KEY:}
     model: ${AI_MODEL:deepseek-v4-pro}
+
+management:
+  endpoints:
+    web:
+      discovery:
+        enabled: false
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

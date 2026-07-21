@@ -6,6 +6,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -20,6 +22,15 @@ class DataForgeApplicationTest {
 
     @Test
     void contextLoadsWithDatabaseAndSecurity() {}
+
+    @Test
+    void exposesOnlyTheHealthActuatorEndpoint() throws Exception {
+        mvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+        mvc.perform(get("/actuator").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+    }
 
     @Test
     void registrationRequiresInvitationAndCreatesSession() throws Exception {

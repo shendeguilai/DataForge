@@ -1,0 +1,66 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      minimum-idle: 2
+      connection-timeout: 10000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    clean-disabled: true
+    validate-on-migrate: true
+    baseline-on-migrate: false
+    locations: classpath:db/migration
+
+dataforge:
+  runtime-dir: ${DATAFORGE_RUNTIME_DIR:/var/lib/dataforge/runtime}
+  process-stack-mb: ${DATAFORGE_PROCESS_STACK_MB:256}
+  daily-generation-limit: ${DAILY_GENERATION_LIMIT:30}
+  invite-code: ${INVITE_CODE}
+  bootstrap-enabled: ${DATAFORGE_BOOTSTRAP_ENABLED:true}
+  atcoder:
+    cookie: ${ATCODER_COOKIE:}
+  quiz:
+    countdown-seconds: ${QUIZ_COUNTDOWN_SECONDS:3}
+    buzz-seconds: ${QUIZ_BUZZ_SECONDS:15}
+    room-expiry-minutes: ${QUIZ_ROOM_EXPIRY_MINUTES:30}
+    room-capacity: ${QUIZ_ROOM_CAPACITY:60}
+  admin:
+    username: ${ADMIN_USERNAME}
+    password: ${ADMIN_PASSWORD}
+  crypto-secret: ${DATAFORGE_SECRET}
+  ai:
+    base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:deepseek-v4-pro}
+
+management:
+  endpoints:
+    web:
+      discovery:
+        enabled: false
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

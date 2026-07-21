@@ -1,26 +1,24 @@
 package cn.datacraft.typing;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Lob;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "typing_articles")
 class TypingArticleEntity {
     @Id
-    @Column(length = 64)
+    @Column(name = "id", length = 64)
     private String id;
 
-    @Column(nullable = false, length = 80)
+    @Column(name = "title", nullable = false, length = 80)
     private String title;
 
-    @Column(nullable = false, length = 12)
+    @Column(name = "category", nullable = false, length = 12)
     private String category;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
     protected TypingArticleEntity() {}

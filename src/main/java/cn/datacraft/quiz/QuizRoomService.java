@@ -9,7 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.*;

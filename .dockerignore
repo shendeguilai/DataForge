@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.vscode
+data
+runtime
+target
+design
+*.log
+.env
+docs

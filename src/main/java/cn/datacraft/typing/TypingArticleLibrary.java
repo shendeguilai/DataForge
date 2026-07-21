@@ -1,10 +1,11 @@
 package cn.datacraft.typing;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,15 +32,18 @@ public class TypingArticleLibrary {
     private final TypingArticleRepository repository;
     private final TypingArticleSeedStateRepository seedStates;
     private final ApplicationEventPublisher events;
+    private final boolean seedEnabled;
     private volatile List<Article> articles;
 
     @Autowired
     public TypingArticleLibrary(TypingArticleRepository repository,
                                 TypingArticleSeedStateRepository seedStates,
-                                ApplicationEventPublisher events) {
+                                ApplicationEventPublisher events,
+                                @Value("${dataforge.bootstrap-enabled:true}") boolean seedEnabled) {
         this.repository = repository;
         this.seedStates = seedStates;
         this.events = events;
+        this.seedEnabled = seedEnabled;
         this.articles = Collections.emptyList();
     }
 
@@ -48,12 +52,17 @@ public class TypingArticleLibrary {
         this.repository = null;
         this.seedStates = null;
         this.events = null;
+        this.seedEnabled = true;
         this.articles = immutableSorted(defaultArticles());
     }
 
     @PostConstruct
     public synchronized void initialize() {
         if (repository == null) return;
+        if (!seedEnabled) {
+            refresh();
+            return;
+        }
         if (!seedStates.existsById(SEED_VERSION)) {
             List<TypingArticleEntity> missing = defaultArticles().stream()
                     .filter(article -> !repository.existsById(article.id))

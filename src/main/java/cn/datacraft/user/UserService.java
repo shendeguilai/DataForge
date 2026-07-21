@@ -5,7 +5,7 @@ import org.springframework.security.core.userdetails.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
@@ -17,20 +17,24 @@ public class UserService implements UserDetailsService {
     private final String inviteCode;
     private final String adminUsername;
     private final String adminPassword;
+    private final boolean bootstrapEnabled;
 
     public UserService(UserAccountRepository users, PasswordEncoder encoder,
                        @Value("${dataforge.invite-code}") String inviteCode,
                        @Value("${dataforge.admin.username}") String adminUsername,
-                       @Value("${dataforge.admin.password}") String adminPassword) {
+                       @Value("${dataforge.admin.password}") String adminPassword,
+                       @Value("${dataforge.bootstrap-enabled:true}") boolean bootstrapEnabled) {
         this.users = users;
         this.encoder = encoder;
         this.inviteCode = inviteCode;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
+        this.bootstrapEnabled = bootstrapEnabled;
     }
 
     @PostConstruct
     public void initializeAdmin() {
+        if (!bootstrapEnabled) return;
         if (!users.existsByUsername(adminUsername.toLowerCase(Locale.ROOT))) {
             create(adminUsername, adminPassword, "ADMIN");
         }
@@ -57,6 +61,16 @@ public class UserService implements UserDetailsService {
             throw new IllegalArgumentException("用户名需为 3～24 位字母、数字或下划线");
         if (password == null || password.length() < 8 || password.length() > 72)
             throw new IllegalArgumentException("密码长度需为 8～72 位");
+    }
+
+    public UserAccount resetAdminPassword(String username, String password) {
+        if (password == null || password.length() < 12 || password.length() > 72) {
+            throw new IllegalArgumentException("管理员密码长度需为 12～72 位");
+        }
+        UserAccount user = requireByUsername(username);
+        if (!"ADMIN".equals(user.getRole())) throw new IllegalArgumentException("指定账号不是管理员");
+        user.setPasswordHash(encoder.encode(password));
+        return users.save(user);
     }
 
     public UserAccount requireByUsername(String username) {

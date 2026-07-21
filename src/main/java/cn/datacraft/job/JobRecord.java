@@ -1,28 +1,30 @@
 package cn.datacraft.job;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
 @Table(name = "generation_jobs")
 public class JobRecord {
-    @Id @Column(length = 36)
+    @Id @Column(name = "id", length = 36)
     String id;
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     Long userId;
-    @Column(nullable = false, length = 32)
+    @Column(name = "status", nullable = false, length = 32)
     String status;
+    @Column(name = "progress", nullable = false)
     int progress;
-    @Column(length = 500)
+    @Column(name = "message", length = 500)
     String message;
-    @Lob String error;
-    @Lob @Column(nullable = false) String statement;
-    @Lob @Column(nullable = false) String standardCode;
-    @Lob @Column(nullable = false) String requirements;
+    @Column(name = "error", columnDefinition = "TEXT") String error;
+    @Column(name = "statement", nullable = false, columnDefinition = "TEXT") String statement;
+    @Column(name = "standard_code", nullable = false, columnDefinition = "TEXT") String standardCode;
+    @Column(name = "requirements", nullable = false, columnDefinition = "TEXT") String requirements;
+    @Column(name = "case_count", nullable = false)
     int caseCount;
-    @Column(length = 12) String cppStandard;
-    @Lob String planJson;
-    @Column(length = 1000) String artifactPath;
-    @Column(nullable = false) Instant createdAt;
-    @Column(nullable = false) Instant updatedAt;
+    @Column(name = "cpp_standard", length = 12) String cppStandard;
+    @Column(name = "plan_json", columnDefinition = "TEXT") String planJson;
+    @Column(name = "artifact_path", length = 1000) String artifactPath;
+    @Column(name = "created_at", nullable = false) Instant createdAt;
+    @Column(name = "updated_at", nullable = false) Instant updatedAt;
 }

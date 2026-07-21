@@ -142,7 +142,7 @@ class TypingRoomServiceTest {
         }
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
                 () -> rooms.join(created.roomId, "same-user", "wrong", "10.0.0.2"));
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, error.getStatus());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, error.getStatusCode());
     }
 
     @Test

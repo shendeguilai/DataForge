@@ -1,16 +1,18 @@
 package cn.datacraft.ai;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
 @Table(name = "ai_config")
 public class AiConfigEntity {
-    @Id private Long id = 1L;
-    @Column(length = 500) private String baseUrl;
-    @Column(length = 120) private String model;
-    @Lob private String encryptedApiKey;
+    @Id @Column(name = "id") private Long id = 1L;
+    @Column(name = "base_url", length = 500) private String baseUrl;
+    @Column(name = "model", length = 120) private String model;
+    @Column(name = "encrypted_api_key", columnDefinition = "TEXT") private String encryptedApiKey;
+    @Column(name = "daily_generation_limit")
     private Integer dailyGenerationLimit;
+    @Column(name = "updated_at")
     private Instant updatedAt = Instant.now();
     public Long getId() { return id; }
     public String getBaseUrl() { return baseUrl; }

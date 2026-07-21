@@ -29,21 +29,21 @@ public class JobService {
     private final AiConfigService config;
     private final ObjectMapper mapper;
     private final Path runtimeRoot;
+    private final ArtifactStorage artifacts;
     private final Executor jobExecutor;
     private final int processStackMb;
 
     public JobService(JobRepository repository, AiPlanner planner, AiConfigService config, ObjectMapper mapper,
-                      @Qualifier("jobExecutor") Executor jobExecutor,
-                      @Value("${dataforge.runtime-dir:./runtime}") String runtimeDir,
+                      @Qualifier("jobExecutor") Executor jobExecutor, ArtifactStorage artifacts,
                       @Value("${dataforge.process-stack-mb:256}") int processStackMb) throws IOException {
         this.repository = repository;
         this.planner = planner;
         this.config = config;
         this.mapper = mapper;
         this.jobExecutor = jobExecutor;
+        this.artifacts = artifacts;
         this.processStackMb = Math.max(16, processStackMb);
-        this.runtimeRoot = Paths.get(runtimeDir).toAbsolutePath().normalize();
-        Files.createDirectories(runtimeRoot);
+        this.runtimeRoot = artifacts.root();
     }
 
     public synchronized GenerationJob create(GenerationRequest request, Long userId, Integer userDailyGenerationLimit) {
@@ -175,8 +175,10 @@ public class JobService {
             manifest.put("aiGenerated", job.getPlan().isAiGenerated()); manifest.put("cases", cases);
             Files.write(dir.resolve("manifest.json"), mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
             Files.write(dir.resolve("problem.md"), job.getRequest().getStatement().getBytes(StandardCharsets.UTF_8));
-            Path zip = runtimeRoot.resolve("dataforge-" + id + ".zip");
-            zipDirectory(dir, zip);
+            Path pendingZip = artifacts.pendingZip(id);
+            Files.deleteIfExists(pendingZip);
+            zipDirectory(dir, pendingZip);
+            Path zip = artifacts.publish(id, pendingZip);
             job.setArtifact(zip);
             job.update(JobStatus.COMPLETED, 100, "数据包生成完成");
             repository.save(job);

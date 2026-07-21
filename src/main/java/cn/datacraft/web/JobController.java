@@ -6,11 +6,12 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import java.security.Principal;
+import java.nio.file.Files;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -50,6 +51,7 @@ public class JobController {
     public ResponseEntity<FileSystemResource> download(@PathVariable UUID id, Principal principal) throws IOException {
         GenerationJob job = jobs.requireOwned(id, userId(principal));
         if (!job.isDownloadReady()) throw new IllegalStateException("数据包尚未生成完成");
+        if (!Files.isRegularFile(job.getArtifact())) throw new IllegalStateException("数据包文件不存在，请联系管理员恢复备份");
         FileSystemResource file = new FileSystemResource(job.getArtifact());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
