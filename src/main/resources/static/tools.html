@@ -27,8 +27,8 @@
         <button class="logout-btn" id="logoutButton" type="button">退出</button>
     </div>
     <div class="account-actions" id="anonymousActions">
-        <a class="ghost-btn" href="/">登录</a>
-        <a class="ghost-btn" href="/">注册</a>
+        <button class="ghost-btn" data-portal-auth="login" type="button">登录</button>
+        <button class="ghost-btn" data-portal-auth="register" type="button">注册</button>
     </div>
 </header>
 
@@ -64,6 +64,21 @@
                 <h2>双人打字 PK</h2>
                 <p>创建公开房间，邀请同学加入，由房主选择两位选手进行中文打字对决，其他成员可以实时观战。</p>
                 <a class="primary-btn" href="/typing-pk.html"><span>打开工具</span><b>→</b></a>
+            </div>
+        </article>
+
+        <article class="panel portal-card">
+            <div class="portal-visual quiz-visual" aria-hidden="true">
+                <div class="quiz-preview-card"><span>J006</span><strong>?</strong></div>
+                <div class="quiz-preview-buzzer">抢</div>
+                <i class="quiz-preview-wave wave-one"></i><i class="quiz-preview-wave wave-two"></i>
+            </div>
+            <div class="portal-card-body">
+                <span class="soon-badge">已接入 · 教师登录</span>
+                <h2>课堂问题抢答</h2>
+                <p>老师创建房间并随机组卷，学生通过姓名和邀请码在浏览器加入；抢到后口头回答，实时计分并同步答案解析。</p>
+                <button class="primary-btn" type="button" data-auth-required-href="/quiz-buzzer.html"><span>创建抢答课堂</span><b>→</b></button>
+                <a class="portal-student-link" href="/quiz-join.html">学生加入房间</a>
             </div>
         </article>
 

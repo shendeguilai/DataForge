@@ -65,12 +65,15 @@ public final class TypingDtos {
         public final int cpm;
         public final double accuracy;
         public final int errors;
+        public final int currentCombo;
+        public final int bestCombo;
         public final long elapsedMillis;
         public final boolean finished;
 
         public PlayerView(String memberId, String displayName, boolean online, String input,
                           int correctCount, int progress, int cpm, double accuracy,
-                          int errors, long elapsedMillis, boolean finished) {
+                          int errors, int currentCombo, int bestCombo,
+                          long elapsedMillis, boolean finished) {
             this.memberId = memberId;
             this.displayName = displayName;
             this.online = online;
@@ -80,6 +83,8 @@ public final class TypingDtos {
             this.cpm = cpm;
             this.accuracy = accuracy;
             this.errors = errors;
+            this.currentCombo = currentCombo;
+            this.bestCombo = bestCombo;
             this.elapsedMillis = elapsedMillis;
             this.finished = finished;
         }
@@ -119,20 +124,36 @@ public final class TypingDtos {
         public final String roundId;
         public final String articleTitle;
         public final long finishedAt;
+        public final String winnerId;
         public final String winnerName;
         public final String finishReason;
         public final PlayerView left;
         public final PlayerView right;
 
-        public HistoryView(String roundId, String articleTitle, long finishedAt, String winnerName,
+        public HistoryView(String roundId, String articleTitle, long finishedAt, String winnerId, String winnerName,
                            String finishReason, PlayerView left, PlayerView right) {
             this.roundId = roundId;
             this.articleTitle = articleTitle;
             this.finishedAt = finishedAt;
+            this.winnerId = winnerId;
             this.winnerName = winnerName;
             this.finishReason = finishReason;
             this.left = left;
             this.right = right;
+        }
+    }
+
+    public static final class ReactionView {
+        public final String memberId;
+        public final String displayName;
+        public final String emoji;
+        public final long sentAt;
+
+        public ReactionView(String memberId, String displayName, String emoji, long sentAt) {
+            this.memberId = memberId;
+            this.displayName = displayName;
+            this.emoji = emoji;
+            this.sentAt = sentAt;
         }
     }
 

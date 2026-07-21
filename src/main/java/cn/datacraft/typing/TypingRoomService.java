@@ -24,6 +24,12 @@ public class TypingRoomService {
     public static final int ROOM_CAPACITY = 30;
     private static final int HISTORY_LIMIT = 5;
     private static final int MAX_INPUT_DELTA = 24;
+    private static final int IDENTITY_JOIN_FAILURE_LIMIT = 5;
+    private static final int NETWORK_JOIN_FAILURE_LIMIT = 100;
+    private static final long JOIN_ATTEMPT_WINDOW_MILLIS = TimeUnit.MINUTES.toMillis(10);
+    private static final long REACTION_INTERVAL_MILLIS = 1_000;
+    private static final Set<String> ALLOWED_REACTIONS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("👏", "🔥", "⚡", "💪", "🎉", "😮")));
     private static final Pattern DISPLAY_NAME = Pattern.compile("[\\p{IsHan}A-Za-z0-9_.·-]{1,16}");
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -99,15 +105,20 @@ public class TypingRoomService {
     public JoinResponse join(String roomId, String rawDisplayName, String providedInviteCode, String remoteAddress) {
         Room room = requireRoom(roomId);
         String displayName = normalizeDisplayName(rawDisplayName);
-        String attemptKey = roomId + "|" + String.valueOf(remoteAddress);
-        checkJoinRateLimit(attemptKey);
+        String networkKey = "network|" + roomId + "|" + normalizeRemoteAddress(remoteAddress);
+        String identityKey = "identity|" + roomId + "|" + normalizeRemoteAddress(remoteAddress)
+                + "|" + displayName.toLowerCase(Locale.ROOT);
+        checkJoinRateLimit(identityKey, IDENTITY_JOIN_FAILURE_LIMIT);
+        checkJoinRateLimit(networkKey, NETWORK_JOIN_FAILURE_LIMIT);
         String token;
         String memberId;
 
         synchronized (room) {
             requireOpen(room);
             if (!constantTimeEquals(room.inviteCode, providedInviteCode == null ? "" : providedInviteCode.trim())) {
-                recordFailedJoin(attemptKey);
+                boolean blocked = recordFailedJoin(identityKey, IDENTITY_JOIN_FAILURE_LIMIT);
+                blocked |= recordFailedJoin(networkKey, NETWORK_JOIN_FAILURE_LIMIT);
+                if (blocked) throw joinRateLimitException();
                 throw new IllegalArgumentException("邀请码不正确");
             }
             if (room.members.size() >= ROOM_CAPACITY) throw new IllegalStateException("房间人数已满");
@@ -122,7 +133,7 @@ public class TypingRoomService {
             room.lastActivity = System.currentTimeMillis();
             memberId = member.id;
         }
-        joinAttempts.remove(attemptKey);
+        joinAttempts.remove(identityKey);
         publishChanged(roomId);
         return new JoinResponse(memberId, token, roomView(roomId, null, token));
     }
@@ -309,13 +320,20 @@ public class TypingRoomService {
             if (deletion) {
                 stats.input = input;
                 stats.correctCount = commonPrefix(input, article.getContent());
+                stats.currentCombo = 0;
                 changed = true;
             } else {
                 int inputCorrect = commonPrefix(input, article.getContent());
                 int gainedCorrect = inputCorrect <= previousCorrect ? 0
                         : article.getContent().codePointCount(previousCorrect, inputCorrect);
+                int newErrors = Math.max(0, attemptedCount - gainedCorrect);
                 stats.insertedCount += attemptedCount;
-                stats.errors += Math.max(0, attemptedCount - gainedCorrect);
+                stats.errors += newErrors;
+                if (gainedCorrect > 0) {
+                    stats.currentCombo += gainedCorrect;
+                    stats.bestCombo = Math.max(stats.bestCombo, stats.currentCombo);
+                }
+                if (newErrors > 0) stats.currentCombo = 0;
                 stats.input = truncateAfterFirstMistake(input, article.getContent(), inputCorrect);
                 stats.correctCount = commonPrefix(stats.input, article.getContent());
                 changed = true;
@@ -328,6 +346,26 @@ public class TypingRoomService {
         }
         if (changed) publishChanged(identity.roomId);
         return changed;
+    }
+
+    public ReactionView sendReaction(ConnectionIdentity identity, String emoji) {
+        if (!ALLOWED_REACTIONS.contains(emoji)) throw new IllegalArgumentException("不支持这个助威表情");
+        Room room = requireRoom(identity.roomId);
+        synchronized (room) {
+            Member member = room.members.get(identity.memberId);
+            if (member == null || !member.connections.contains(identity.connectionId)) {
+                throw new AccessDeniedException("房间身份已失效");
+            }
+            if ((room.state == RoomState.COUNTDOWN || room.state == RoomState.RUNNING)
+                    && isActivePlayer(room, member.id)) {
+                throw new AccessDeniedException("参赛者比赛期间不能发送助威");
+            }
+            long now = System.currentTimeMillis();
+            if (now - member.lastReactionAt < REACTION_INTERVAL_MILLIS) return null;
+            member.lastReactionAt = now;
+            room.lastActivity = now;
+            return new ReactionView(member.id, member.displayName, emoji, now);
+        }
     }
 
     private void beginRound(String roomId, String roundId) {
@@ -384,7 +422,7 @@ public class TypingRoomService {
         Article article = battle.article;
         Member winner = winnerId == null ? null : room.members.get(winnerId);
         room.history.addFirst(new HistoryView(battle.roundId, article.getTitle(), now,
-                winner == null ? null : winner.displayName, reason,
+                winnerId, winner == null ? null : winner.displayName, reason,
                 toPlayerView(room, battle, battle.left, now),
                 toPlayerView(room, battle, battle.right, now)));
         while (room.history.size() > HISTORY_LIMIT) room.history.removeLast();
@@ -432,7 +470,8 @@ public class TypingRoomService {
         int cpm = elapsed <= 0 ? 0 : (int) Math.round(stats.correctCount * 60_000.0 / Math.max(1000, elapsed));
         return new PlayerView(stats.memberId, member == null ? "已离开" : member.displayName,
                 member != null && member.isOnline(), stats.input, stats.correctCount, progress,
-                cpm, accuracy(stats), stats.errors, elapsed, stats.finishedAt != null);
+                cpm, accuracy(stats), stats.errors, stats.currentCombo, stats.bestCombo,
+                elapsed, stats.finishedAt != null);
     }
 
     private ArticleView articleView(Article article, boolean includeContent) {
@@ -517,29 +556,33 @@ public class TypingRoomService {
                 events.publishEvent(TypingRoomEvent.closed(room.id));
             }
         }
-        long attemptCutoff = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10);
+        long attemptCutoff = System.currentTimeMillis() - JOIN_ATTEMPT_WINDOW_MILLIS;
         joinAttempts.entrySet().removeIf(entry -> entry.getValue().startedAt < attemptCutoff);
     }
 
-    private void checkJoinRateLimit(String key) {
+    private void checkJoinRateLimit(String key, int failureLimit) {
         AttemptWindow attempt = joinAttempts.get(key);
-        if (attempt != null && attempt.blocked(System.currentTimeMillis())) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "邀请码尝试过于频繁，请稍后再试");
-        }
+        if (attempt != null && attempt.blocked(System.currentTimeMillis(), failureLimit)) throw joinRateLimitException();
     }
 
-    private void recordFailedJoin(String key) {
+    private boolean recordFailedJoin(String key, int failureLimit) {
         long now = System.currentTimeMillis();
         AttemptWindow attempt = joinAttempts.compute(key, (ignored, current) -> {
-            if (current == null || now - current.startedAt > TimeUnit.MINUTES.toMillis(10)) {
+            if (current == null || now - current.startedAt > JOIN_ATTEMPT_WINDOW_MILLIS) {
                 return new AttemptWindow(now, 1);
             }
-            current.failures++;
-            return current;
+            return new AttemptWindow(current.startedAt, current.failures + 1);
         });
-        if (attempt.blocked(now)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "邀请码尝试过于频繁，请稍后再试");
-        }
+        return attempt.blocked(now, failureLimit);
+    }
+
+    private static ResponseStatusException joinRateLimitException() {
+        return new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "邀请码尝试过于频繁，请稍后再试");
+    }
+
+    private static String normalizeRemoteAddress(String remoteAddress) {
+        if (remoteAddress == null || remoteAddress.trim().isEmpty()) return "unknown";
+        return remoteAddress.trim().toLowerCase(Locale.ROOT);
     }
 
     private static double accuracy(PlayerStats stats) {
@@ -671,6 +714,7 @@ public class TypingRoomService {
         final Set<String> connections = new HashSet<>();
         final Map<String, Long> sequences = new HashMap<>();
         long lastSeen = System.currentTimeMillis();
+        long lastReactionAt;
 
         Member(String id, String displayName, boolean owner, String token) {
             this.id = id;
@@ -715,6 +759,8 @@ public class TypingRoomService {
         int correctCount;
         int insertedCount;
         int errors;
+        int currentCombo;
+        int bestCombo;
         long lastInputAt;
         Long finishedAt;
 
@@ -730,8 +776,8 @@ public class TypingRoomService {
             this.failures = failures;
         }
 
-        boolean blocked(long now) {
-            return failures >= 5 && now - startedAt <= TimeUnit.MINUTES.toMillis(10);
+        boolean blocked(long now, int failureLimit) {
+            return failures >= failureLimit && now - startedAt <= JOIN_ATTEMPT_WINDOW_MILLIS;
         }
     }
 }

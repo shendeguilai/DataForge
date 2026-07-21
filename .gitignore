@@ -6,3 +6,5 @@ runtime/
 data/
 *.log
 .env
+.DS_Store
+J组能量卡片/

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="通过房间号、姓名和邀请码加入 DataForge 课堂问题抢答">
+    <title>加入问题抢答 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/quiz.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>课堂抢答</small></a>
+    <a class="ghost-btn" href="/tools.html">返回工具列表</a>
+</header>
+
+<main class="quiz-main quiz-student-main">
+    <section class="quiz-join-layout" id="studentJoinView">
+        <div class="quiz-join-copy">
+            <div class="quiz-live-tag"><i></i> JOIN CLASSROOM</div>
+            <h1>准备好，<br><em>就按下抢答。</em></h1>
+            <p>向老师获取房间号和邀请码。加入后请保持页面打开，系统会按服务器收到按钮的先后顺序判定。</p>
+        </div>
+        <form class="panel quiz-join-form" id="studentJoinForm">
+            <h2>加入抢答房间</h2><p>无需注册账号，姓名在本房间内不能重复。</p>
+            <label class="quiz-field">6 位房间号<input id="studentRoomCode" maxlength="6" autocomplete="off" required></label>
+            <label class="quiz-field">你的姓名<input id="studentDisplayName" maxlength="16" autocomplete="name" required></label>
+            <label class="quiz-field">6 位邀请码<input id="studentInviteCode" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required></label>
+            <button class="primary-btn wide" type="submit"><span>进入课堂</span><b>→</b></button>
+        </form>
+    </section>
+
+    <section class="hidden" id="studentRoomView">
+        <header class="panel quiz-room-top student-room-top">
+            <div><button class="text-btn" id="studentLeaveButton" type="button">← 退出课堂</button><strong id="studentRoomName">问题抢答</strong></div>
+            <div class="quiz-room-meta"><span id="studentIdentity">—</span><span class="quiz-socket" id="studentSocketState"><i></i>连接中</span></div>
+        </header>
+        <div class="quiz-student-grid">
+            <section class="quiz-student-stage">
+                <article class="quiz-question-stage student-question-stage">
+                    <div class="quiz-stage-heading"><div><span id="studentQuestionCategory">等待发题</span><span id="studentQuestionId">—</span></div><strong id="studentQuestionProgress">0 / 0</strong></div>
+                    <div class="quiz-empty-question" id="studentEmptyQuestion"><b>✦</b><h2>已经进入课堂</h2><p>等待老师准备第一道题。</p></div>
+                    <img class="quiz-card-image hidden" id="studentQuestionImage" alt="当前抢答题目">
+                </article>
+                <section class="quiz-buzz-dock panel">
+                    <div class="quiz-student-status"><span id="studentRoundStatus">等待老师发题</span><strong id="studentClock">—</strong></div>
+                    <button class="quiz-buzz-button" id="studentBuzzButton" type="button" disabled><span>抢答</span><small>空格键也可以</small></button>
+                    <p id="studentBuzzHint">抢答开放后按钮会自动亮起。</p>
+                </section>
+                <section class="panel quiz-revealed-answer hidden" id="studentRevealedAnswer">
+                    <header><span>ANSWER</span><h2>答案与解析</h2></header>
+                    <div id="studentAnswerContent"></div>
+                </section>
+            </section>
+            <aside class="quiz-room-side">
+                <section class="panel quiz-live-panel">
+                    <header><div><span>RESULT</span><h2>本题状态</h2></div></header>
+                    <div class="quiz-winner-card" id="studentWinnerCard"><span>等待老师开放抢答</span></div>
+                    <div class="quiz-attempt-list" id="studentAttemptList"></div>
+                </section>
+                <section class="panel quiz-members-panel">
+                    <header><h2>课堂积分</h2><span id="studentOnlineCount">0 人在线</span></header>
+                    <div id="studentScoreList" class="quiz-member-list"></div>
+                </section>
+            </aside>
+        </div>
+    </section>
+</main>
+
+<footer><span>DataForge / Student Buzzer</span><span>听清题目，想好再抢。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/quiz-common.js"></script>
+<script src="/quiz-join.js"></script>
+</body>
+</html>

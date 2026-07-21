@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="DataForge 课堂问题抢答教师控制台">
+    <title>问题抢答 · 教师控制台 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/quiz.css">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>比赛工具站</small></a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span><button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions hidden" id="anonymousActions"></div>
+</header>
+
+<main class="quiz-main">
+    <section id="teacherCreateView" class="quiz-create-layout">
+        <section class="quiz-create-hero">
+            <a class="quiz-back" href="/tools.html">← 返回实用工具</a>
+            <div class="quiz-live-tag"><i></i> CLASSROOM BUZZER</div>
+            <h1>让每一次举手，<br><em>都有清晰的回应。</em></h1>
+            <p>创建课堂、筛选题目并分享加入信息。学生在电脑浏览器中抢答，你负责判断与讲解。</p>
+            <div class="quiz-feature-row"><span>60 人课堂</span><span>服务器公平判定</span><span>答错自动重开</span></div>
+        </section>
+        <form class="panel quiz-create-form" id="createQuizRoomForm">
+            <div class="eyebrow"><span></span> NEW CLASSROOM</div>
+            <h2>创建抢答房间</h2>
+            <p>本节课会按条件随机生成不重复题单。</p>
+            <label class="quiz-field">课堂名称<input id="quizRoomName" maxlength="30" value="信息学课堂抢答" required></label>
+            <fieldset class="quiz-fieldset"><legend>题目分类</legend><div class="quiz-check-grid" id="categoryFilters"><span class="quiz-loading">读取题库…</span></div></fieldset>
+            <fieldset class="quiz-fieldset"><legend>难度</legend><div class="quiz-check-grid compact" id="difficultyFilters"></div></fieldset>
+            <div class="quiz-form-row">
+                <label class="quiz-field">题目数量<input id="quizQuestionCount" type="number" min="1" max="50" value="20" required></label>
+                <label class="quiz-field">抢答时限<input id="quizBuzzSeconds" type="number" min="5" max="120" value="15" required></label>
+            </div>
+            <p class="quiz-match-note" id="quizMatchNote">共 256 道题可用</p>
+            <button class="primary-btn wide" type="submit"><span>创建并进入课堂</span><b>→</b></button>
+        </form>
+    </section>
+
+    <section class="hidden" id="teacherRoomView">
+        <header class="panel quiz-room-top">
+            <div><a class="quiz-back" href="/tools.html">实用工具</a><span>/</span><strong id="teacherRoomName">问题抢答</strong></div>
+            <div class="quiz-room-meta"><span class="quiz-state-pill" id="teacherRoomState">等待准备</span><span class="quiz-socket" id="teacherSocketState"><i></i>连接中</span></div>
+        </header>
+
+        <section class="quiz-share-strip panel">
+            <div><span>房间号</span><strong id="teacherRoomCode">------</strong></div>
+            <div><span>6 位邀请码</span><strong id="teacherInviteCode">------</strong></div>
+            <div class="quiz-share-link"><span>学生加入地址</span><code id="teacherJoinUrl">—</code></div>
+            <button class="ghost-btn" id="copyJoinButton" type="button">复制加入信息</button>
+            <button class="text-btn" id="rotateInviteButton" type="button">换邀请码</button>
+        </section>
+
+        <div class="quiz-teacher-grid">
+            <section class="quiz-stage-column">
+                <article class="quiz-question-stage" id="teacherQuestionStage">
+                    <div class="quiz-stage-heading">
+                        <div><span id="teacherQuestionType">口头填空</span><span id="teacherQuestionId">未选题</span></div>
+                        <strong id="teacherQuestionProgress">0 / 0</strong>
+                    </div>
+                    <div class="quiz-empty-question" id="teacherEmptyQuestion"><b>✦</b><h2>房间已经准备好</h2><p>学生加入后，准备第一道题即可开始。</p></div>
+                    <img class="quiz-card-image hidden" id="teacherQuestionImage" alt="当前抢答题目">
+                    <div class="quiz-stage-status"><span id="teacherRoundStatus">等待准备题目</span><strong id="teacherClock">—</strong></div>
+                </article>
+
+                <section class="panel quiz-controls">
+                    <button class="primary-btn" id="primaryRoundButton" type="button"><span>准备第一题</span><b>→</b></button>
+                    <button class="quiz-correct hidden" id="correctButton" type="button">✓ 回答正确</button>
+                    <button class="quiz-wrong hidden" id="wrongButton" type="button">× 回答错误，重新开放</button>
+                    <button class="ghost-btn hidden" id="chooseQuestionButton" type="button">指定 / 更换题目</button>
+                    <button class="text-btn hidden" id="revealButton" type="button">直接揭晓答案</button>
+                </section>
+
+                <details class="panel quiz-answer-panel" id="teacherAnswerPanel">
+                    <summary><span>仅老师可见</span><strong>参考答案与讲解</strong><b>展开</b></summary>
+                    <div class="quiz-answer-content" id="teacherAnswerContent"><p>准备题目后显示参考答案。</p></div>
+                </details>
+            </section>
+
+            <aside class="quiz-room-side">
+                <section class="panel quiz-live-panel">
+                    <header><div><span>LIVE</span><h2>实时抢答</h2></div><b id="teacherOnlineCount">0 人在线</b></header>
+                    <div class="quiz-winner-card" id="teacherWinnerCard"><span>等待老师开放抢答</span></div>
+                    <div class="quiz-attempt-list" id="teacherAttemptList"></div>
+                </section>
+                <section class="panel quiz-members-panel">
+                    <header><h2>课堂积分</h2><span id="teacherMemberCount">0 / 60</span></header>
+                    <div id="teacherMemberList" class="quiz-member-list"></div>
+                </section>
+                <button class="quiz-close-room" id="closeQuizRoomButton" type="button">结束并关闭课堂</button>
+            </aside>
+        </div>
+    </section>
+</main>
+
+<section class="modal-view hidden" id="questionPickerModal">
+    <div class="panel quiz-picker">
+        <button class="modal-x" id="closeQuestionPicker" type="button">×</button>
+        <div class="eyebrow"><span></span> QUESTION PICKER</div>
+        <h2>指定本轮题目</h2>
+        <input id="questionSearchInput" placeholder="搜索编号、分类或题面">
+        <div class="quiz-picker-list" id="questionPickerList"></div>
+    </div>
+</section>
+
+<footer><span>DataForge / Classroom Buzzer</span><span>先抢到回答权，再把思路讲清楚。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/quiz-common.js"></script>
+<script src="/quiz-buzzer.js"></script>
+</body>
+</html>

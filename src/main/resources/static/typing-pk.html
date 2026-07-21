@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="创建双人中文打字 PK 房间，实时查看速度、准确率与输入进度">
+    <meta name="description" content="创建双人中文、英文或代码打字 PK 房间，实时查看速度、准确率、连击与比赛进度">
     <title>打字 PK · DataForge</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/portal.css">
@@ -28,35 +28,57 @@
         <button class="logout-btn" id="logoutButton" type="button">退出</button>
     </div>
     <div class="account-actions" id="anonymousActions">
-        <a class="ghost-btn" href="/">登录</a>
-        <a class="ghost-btn" href="/">注册</a>
+        <button class="ghost-btn" data-portal-auth="login" type="button">登录</button>
+        <button class="ghost-btn" data-portal-auth="register" type="button">注册</button>
     </div>
 </header>
 
 <main class="typing-main">
     <section id="lobbyView">
-        <div class="typing-hero">
-            <div>
+        <section class="lobby-stage">
+            <div class="lobby-copy">
                 <a class="text-btn back-link" href="/tools.html">← 返回工具列表</a>
-                <div class="eyebrow"><span></span> TYPING DUEL</div>
-                <h1>双人打字 PK</h1>
-                <p>两位选手，同一篇文章。房主选人并发起比赛，其他同学可以实时观战。</p>
+                <div class="duel-live-badge"><i></i><span>REAL-TIME TYPING ARENA</span></div>
+                <h1>打字，也要有<br><em>比赛的心跳。</em></h1>
+                <p>中文、英文、代码同场竞技。看进度、拼连击，让全班一起为选手助威。</p>
+                <div class="lobby-tags" aria-label="功能特点">
+                    <span>双人实时竞速</span><span>最多 30 人观战</span><span>代码支持 Tab</span>
+                </div>
+                <button class="primary-btn lobby-create" id="createRoomButton" type="button">
+                    <span>创建一场 PK</span><b>+</b>
+                </button>
             </div>
-            <button class="primary-btn" id="createRoomButton" type="button">
-                <span>创建房间</span><b>+</b>
-            </button>
-        </div>
+            <div class="lobby-preview" aria-hidden="true">
+                <div class="preview-top"><span>LIVE MATCH</span><strong>02:48</strong></div>
+                <div class="preview-versus">
+                    <div class="preview-player coral"><b>张</b><strong>张同学</strong><span>128 CPM</span></div>
+                    <div class="preview-vs">VS</div>
+                    <div class="preview-player teal"><b>李</b><strong>李同学</strong><span>142 CPM</span></div>
+                </div>
+                <div class="preview-lanes">
+                    <div><span style="width:62%"></span><b>62%</b></div>
+                    <div><span style="width:74%"></span><b>74%</b></div>
+                </div>
+                <div class="preview-lead">⚡ 李同学领先 12 字</div>
+                <div class="preview-keys"><i>A</i><i>S</i><i>D</i><i>F</i><span>SPACE</span><i>J</i><i>K</i><i>L</i></div>
+            </div>
+        </section>
 
         <section class="lobby-panel panel">
             <header class="lobby-heading">
                 <div>
-                    <h2>公开房间</h2>
-                    <span id="roomCount">0 个房间</span>
+                    <span class="section-chip">ROOMS</span>
+                    <div><h2>公开赛场</h2><span id="roomCount">0 个房间</span></div>
                 </div>
                 <button class="icon-btn" id="refreshRoomsButton" type="button" title="刷新房间列表" aria-label="刷新房间列表">↻</button>
             </header>
+            <div class="lobby-summary" aria-label="房间统计">
+                <div><strong id="waitingRoomCount">0</strong><span>等待开赛</span></div>
+                <div><strong id="runningRoomCount">0</strong><span>正在比赛</span></div>
+                <div><strong id="onlineRoomMemberCount">0</strong><span>在线成员</span></div>
+            </div>
             <div class="room-list" id="roomList" aria-live="polite">
-                <div class="room-list-state">正在读取房间列表…</div>
+                <div class="room-list-state"><span class="loading-orb"></span>正在读取房间列表…</div>
             </div>
         </section>
     </section>
@@ -71,15 +93,120 @@
                 </div>
                 <p><span id="roomOwner">-</span> 创建 · <span id="roomOnlineCount">0</span> 人在线</p>
             </div>
-            <div class="socket-state" id="socketState"><i></i><span>连接中</span></div>
+            <div class="room-utilities">
+                <button class="sound-toggle" id="soundToggleButton" type="button" aria-pressed="false">
+                    <span id="soundToggleIcon">♪</span><b id="soundToggleLabel">音效关闭</b>
+                </button>
+                <div class="socket-state" id="socketState"><i></i><span>连接中</span></div>
+            </div>
         </header>
 
         <div class="room-layout">
+            <section class="arena panel">
+                <div class="reaction-layer" id="reactionLayer" aria-live="polite"></div>
+                <header class="arena-heading">
+                    <div>
+                        <span class="arena-kicker" id="articleCategory">等待房主设置</span>
+                        <h2 id="articleTitle">比赛尚未开始</h2>
+                    </div>
+                    <span class="arena-room-mark">DATAFORGE ARENA</span>
+                </header>
+
+                <div class="result-strip hidden" id="resultStrip"></div>
+
+                <section class="duel-scoreboard" aria-label="比赛记分牌">
+                    <div class="duelist duelist-left">
+                        <span class="duelist-avatar" id="leftDuelistAvatar">L</span>
+                        <div><strong id="leftDuelistName">左侧选手</strong><span id="leftSeriesScore">近 5 局 · 0 胜</span></div>
+                    </div>
+                    <div class="match-center">
+                        <span id="clockLabel">等待中</span>
+                        <strong class="versus-mark">VS</strong>
+                        <b id="matchClock">05:00</b>
+                    </div>
+                    <div class="duelist duelist-right">
+                        <div><strong id="rightDuelistName">右侧选手</strong><span id="rightSeriesScore">近 5 局 · 0 胜</span></div>
+                        <span class="duelist-avatar" id="rightDuelistAvatar">R</span>
+                    </div>
+                </section>
+
+                <section class="race-board" aria-label="双方比赛进度">
+                    <div class="race-lead neutral" id="leadIndicator">等待选手起跑</div>
+                    <div class="race-lane race-left">
+                        <span class="race-flag">⚑</span>
+                        <div class="race-track"><i id="leftRaceProgress"></i><b id="leftRaceMarker">L</b></div>
+                        <strong id="leftRacePercent">0%</strong>
+                    </div>
+                    <div class="race-lane race-right">
+                        <span class="race-flag">⚑</span>
+                        <div class="race-track"><i id="rightRaceProgress"></i><b id="rightRaceMarker">R</b></div>
+                        <strong id="rightRacePercent">0%</strong>
+                    </div>
+                </section>
+
+                <div class="battle-grid">
+                    <article class="player-screen" id="leftPlayerScreen">
+                        <header>
+                            <div><i class="presence-dot"></i><strong class="player-name">左侧选手</strong><span class="self-badge hidden">你</span></div>
+                            <span class="combo-badge">0 COMBO</span>
+                        </header>
+                        <div class="typing-copy empty-copy">等待房主选择参赛者</div>
+                        <div class="player-progress"><i></i></div>
+                        <dl class="player-stats">
+                            <div><dt>进度</dt><dd data-stat="progress">0%</dd></div>
+                            <div><dt>速度</dt><dd data-stat="cpm">0 CPM</dd></div>
+                            <div><dt>准确率</dt><dd data-stat="accuracy">0%</dd></div>
+                            <div><dt>错字</dt><dd data-stat="errors">0</dd></div>
+                        </dl>
+                    </article>
+
+                    <article class="player-screen" id="rightPlayerScreen">
+                        <header>
+                            <div><i class="presence-dot"></i><strong class="player-name">右侧选手</strong><span class="self-badge hidden">你</span></div>
+                            <span class="combo-badge">0 COMBO</span>
+                        </header>
+                        <div class="typing-copy empty-copy">等待房主选择参赛者</div>
+                        <div class="player-progress"><i></i></div>
+                        <dl class="player-stats">
+                            <div><dt>进度</dt><dd data-stat="progress">0%</dd></div>
+                            <div><dt>速度</dt><dd data-stat="cpm">0 CPM</dd></div>
+                            <div><dt>准确率</dt><dd data-stat="accuracy">0%</dd></div>
+                            <div><dt>错字</dt><dd data-stat="errors">0</dd></div>
+                        </dl>
+                    </article>
+                </div>
+
+                <div class="typing-dock hidden" id="typingDock">
+                    <div class="typing-dock-label"><strong>专注输入，争取连击</strong><span>错字需退格 · Tab 输入缩进 · Shift+Tab 撤回缩进</span></div>
+                    <textarea id="typingInput" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="比赛输入框" placeholder="比赛开始后在这里输入…"></textarea>
+                </div>
+
+                <div class="waiting-note" id="waitingNote">
+                    <span class="waiting-icon">⌨</span>
+                    <div><strong>等待比赛开始</strong><span>房主选定两名在线成员和一篇文章后即可开始。</span></div>
+                </div>
+
+                <div class="reaction-dock" id="reactionDock">
+                    <div><strong>观众助威</strong><span id="reactionHelp">点击表情为选手加油</span></div>
+                    <div class="reaction-buttons">
+                        <button type="button" data-reaction="👏" aria-label="鼓掌助威">👏</button>
+                        <button type="button" data-reaction="🔥" aria-label="火热助威">🔥</button>
+                        <button type="button" data-reaction="⚡" aria-label="闪电助威">⚡</button>
+                        <button type="button" data-reaction="💪" aria-label="加油助威">💪</button>
+                        <button type="button" data-reaction="🎉" aria-label="庆祝助威">🎉</button>
+                        <button type="button" data-reaction="😮" aria-label="惊叹助威">😮</button>
+                    </div>
+                </div>
+
+                <div class="countdown-overlay hidden" id="countdownOverlay" aria-live="assertive">
+                    <span>READY TO TYPE</span><strong id="countdownNumber">3</strong><small>双手归位，准备出发</small>
+                </div>
+            </section>
+
             <aside class="room-sidebar">
                 <section class="panel owner-panel hidden" id="ownerPanel">
                     <div class="side-heading">
-                        <h2>比赛设置</h2>
-                        <span>房主</span>
+                        <div><span class="side-icon">⚙</span><h2>比赛设置</h2></div><span>房主</span>
                     </div>
                     <div class="invite-block">
                         <label>房间邀请码</label>
@@ -102,72 +229,15 @@
                 </section>
 
                 <section class="panel member-panel">
-                    <div class="side-heading"><h2>房间成员</h2><span id="memberCount">0 / 30</span></div>
+                    <div class="side-heading"><div><span class="side-icon">♟</span><h2>房间成员</h2></div><span id="memberCount">0 / 30</span></div>
                     <div class="member-list" id="memberList"></div>
                 </section>
 
                 <section class="panel history-panel hidden" id="historyPanel">
-                    <div class="side-heading"><h2>最近对局</h2><span>最多 5 局</span></div>
+                    <div class="side-heading"><div><span class="side-icon">↻</span><h2>最近对局</h2></div><span>最多 5 局</span></div>
                     <div class="history-list" id="historyList"></div>
                 </section>
             </aside>
-
-            <section class="arena panel">
-                <header class="arena-heading">
-                    <div>
-                        <span class="arena-kicker" id="articleCategory">等待房主设置</span>
-                        <h2 id="articleTitle">比赛尚未开始</h2>
-                    </div>
-                    <div class="match-clock"><span id="clockLabel">等待中</span><strong id="matchClock">05:00</strong></div>
-                </header>
-
-                <div class="result-strip hidden" id="resultStrip"></div>
-                <div class="battle-grid">
-                    <article class="player-screen" id="leftPlayerScreen">
-                        <header>
-                            <div><i class="presence-dot"></i><strong class="player-name">左侧选手</strong></div>
-                            <span class="side-label">LEFT</span>
-                        </header>
-                        <div class="typing-copy empty-copy">等待房主选择参赛者</div>
-                        <div class="player-progress"><i></i></div>
-                        <dl class="player-stats">
-                            <div><dt>进度</dt><dd data-stat="progress">0%</dd></div>
-                            <div><dt>速度</dt><dd data-stat="cpm">0 CPM</dd></div>
-                            <div><dt>准确率</dt><dd data-stat="accuracy">0%</dd></div>
-                            <div><dt>错字</dt><dd data-stat="errors">0</dd></div>
-                        </dl>
-                    </article>
-
-                    <article class="player-screen" id="rightPlayerScreen">
-                        <header>
-                            <div><i class="presence-dot"></i><strong class="player-name">右侧选手</strong></div>
-                            <span class="side-label">RIGHT</span>
-                        </header>
-                        <div class="typing-copy empty-copy">等待房主选择参赛者</div>
-                        <div class="player-progress"><i></i></div>
-                        <dl class="player-stats">
-                            <div><dt>进度</dt><dd data-stat="progress">0%</dd></div>
-                            <div><dt>速度</dt><dd data-stat="cpm">0 CPM</dd></div>
-                            <div><dt>准确率</dt><dd data-stat="accuracy">0%</dd></div>
-                            <div><dt>错字</dt><dd data-stat="errors">0</dd></div>
-                        </dl>
-                    </article>
-                </div>
-
-                <div class="typing-dock hidden" id="typingDock">
-                    <div class="typing-dock-label"><strong>你的输入</strong><span>错字需退格 · Tab 输入缩进 · Shift+Tab 撤回缩进</span></div>
-                    <textarea id="typingInput" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="比赛输入框"></textarea>
-                </div>
-
-                <div class="waiting-note" id="waitingNote">
-                    <strong>等待比赛开始</strong>
-                    <span>房主选定两名在线成员和一篇文章后即可开始。</span>
-                </div>
-
-                <div class="countdown-overlay hidden" id="countdownOverlay" aria-live="assertive">
-                    <span>准备</span><strong id="countdownNumber">3</strong>
-                </div>
-            </section>
         </div>
     </section>
 </main>

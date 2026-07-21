@@ -27,6 +27,11 @@ dataforge:
   invite-code: ${INVITE_CODE:443322}
   atcoder:
     cookie: ${ATCODER_COOKIE:}
+  quiz:
+    countdown-seconds: ${QUIZ_COUNTDOWN_SECONDS:3}
+    buzz-seconds: ${QUIZ_BUZZ_SECONDS:15}
+    room-expiry-minutes: ${QUIZ_ROOM_EXPIRY_MINUTES:30}
+    room-capacity: ${QUIZ_ROOM_CAPACITY:60}
   admin:
     username: ${ADMIN_USERNAME:admin}
     password: ${ADMIN_PASSWORD:admin123456}

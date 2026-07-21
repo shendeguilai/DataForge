@@ -65,6 +65,11 @@ public class TypingWebSocketHandler extends TextWebSocketHandler {
                 send(client, "pong", Collections.singletonMap("serverTime", System.currentTimeMillis()));
                 return;
             }
+            if ("room.reaction".equals(input.type)) {
+                TypingDtos.ReactionView reaction = rooms.sendReaction(client.identity, input.emoji);
+                if (reaction != null) broadcast(client.identity.roomId, "room.reaction", reaction);
+                return;
+            }
             if (!"typing.input".equals(input.type)) throw new IllegalArgumentException("不支持的消息类型");
             rooms.submitInput(client.identity, input.sequence, input.text);
         } catch (RuntimeException exception) {
@@ -109,6 +114,12 @@ public class TypingWebSocketHandler extends TextWebSocketHandler {
         send(client, "room.snapshot", rooms.roomView(client.identity));
     }
 
+    private void broadcast(String roomId, String type, Object payload) {
+        clients.values().stream()
+                .filter(client -> client.identity.roomId.equals(roomId))
+                .forEach(client -> send(client, type, payload));
+    }
+
     private void send(ClientSession client, String type, Object payload) {
         if (!client.session.isOpen()) return;
         Map<String, Object> message = new LinkedHashMap<>();
@@ -116,10 +127,10 @@ public class TypingWebSocketHandler extends TextWebSocketHandler {
         message.put("payload", payload);
         try {
             client.session.sendMessage(new TextMessage(mapper.writeValueAsString(message)));
-        } catch (IOException exception) {
+        } catch (IOException | RuntimeException exception) {
             try {
-                client.session.close(CloseStatus.SERVER_ERROR);
-            } catch (IOException ignored) {
+                if (client.session.isOpen()) client.session.close(CloseStatus.SERVER_ERROR);
+            } catch (IOException | RuntimeException ignored) {
                 // Connection cleanup is completed by afterConnectionClosed.
             }
         }
@@ -129,7 +140,7 @@ public class TypingWebSocketHandler extends TextWebSocketHandler {
         send(client, type, payload);
         try {
             client.session.close(CloseStatus.NORMAL);
-        } catch (IOException ignored) {
+        } catch (IOException | RuntimeException ignored) {
             // The client may already have disconnected.
         }
     }
@@ -159,5 +170,6 @@ public class TypingWebSocketHandler extends TextWebSocketHandler {
         public String type;
         public long sequence;
         public String text;
+        public String emoji;
     }
 }
