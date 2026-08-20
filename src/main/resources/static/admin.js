@@ -2,6 +2,7 @@ const $a = s => document.querySelector(s);
 let adminSettings = {dailyGenerationLimit: 30};
 let adminJobs = [];
 let adminArticles = [];
+let leaderboardParticipants = [];
 
 async function request(url, options = {}) {
   const r = await fetch(url, options);
@@ -17,7 +18,7 @@ async function init() {
     $a('#adminName').textContent = me.username;
     bind();
     await loadConfig();
-    await Promise.all([loadUsers(), loadJobs(), loadArticles()]);
+    await Promise.all([loadUsers(), loadJobs(), loadArticles(), loadLeaderboardAdmin()]);
   } catch (e) {
     location.href = '/';
   }
@@ -32,6 +33,13 @@ function bind() {
   $a('#cancelArticleEdit').onclick = () => resetArticleForm();
   $a('#articleCategoryFilter').onchange = renderArticles;
   $a('#articleContentInput').oninput = updateArticleContentCount;
+  $a('#contestConfigForm').onsubmit = saveLeaderboardConfig;
+  $a('#saveAtcoderCookie').onclick = saveAtcoderCookie;
+  $a('#clearAtcoderCookie').onclick = clearAtcoderCookie;
+  $a('#leaderboardParticipantForm').onsubmit = saveLeaderboardParticipant;
+  $a('#cancelLeaderboardParticipant').onclick = resetLeaderboardParticipantForm;
+  $a('#fillParticipantBatchExample').onclick = fillParticipantBatchExample;
+  $a('#saveParticipantBatch').onclick = saveParticipantBatch;
   $a('#closeJobDetail').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   $a('#closeJobDetailX').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   document.querySelectorAll('[data-copy-target]').forEach(b => b.onclick = () => copyTargetText(b.dataset.copyTarget));
@@ -40,7 +48,7 @@ function bind() {
 
 function switchPanel(name) {
   document.querySelectorAll('[data-panel]').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
-  ['users','ai','articles','jobs'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
+  ['users','ai','articles','leaderboard','jobs'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
 }
 
 async function loadUsers() {
@@ -199,6 +207,225 @@ async function deleteArticle(id) {
     if ($a('#articleId').value === id) resetArticleForm();
     toast('文章已删除');
     await loadArticles();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function loadLeaderboardAdmin() {
+  const [config, participants] = await Promise.all([
+    request('/api/admin/atcoder-leaderboard/config'),
+    request('/api/admin/atcoder-leaderboard/participants')
+  ]);
+  renderLeaderboardConfig(config);
+  leaderboardParticipants = participants;
+  renderLeaderboardParticipants();
+}
+
+function renderLeaderboardConfig(config) {
+  $a('#contestIdInput').value = config.contestId || '';
+  $a('#contestTitleInput').value = config.displayTitle || '';
+  const cookieLabels = {AVAILABLE: 'Cookie 可用', MISSING: 'Cookie 未配置', INVALID: 'Cookie 已失效'};
+  const cookieState = config.cookieStatus || 'MISSING';
+  const cookie = $a('#atcoderCookieState');
+  cookie.textContent = cookieLabels[cookieState] || 'Cookie 状态未知';
+  cookie.className = `cookie-state ${cookieState.toLowerCase()}`;
+  const sourceLabels = {MANAGED: '后台加密保存', ENVIRONMENT: '系统环境变量', NONE: '尚未配置'};
+  const source = config.cookieSource || 'NONE';
+  $a('#atcoderCookieMeta').textContent = config.cookieUpdatedAt
+    ? `${sourceLabels[source] || source} · 更新于 ${date(config.cookieUpdatedAt)}`
+    : (sourceLabels[source] || source);
+  $a('#clearAtcoderCookie').classList.toggle('hidden', source !== 'MANAGED');
+
+  if (!config.configured) {
+    $a('#contestConfigSummary').textContent = '尚未配置比赛。请先填写 Contest ID 并验证保存。';
+    $a('#contestTaskList').innerHTML = '';
+    return;
+  }
+  const time = config.startAt && config.endAt
+    ? `${date(config.startAt)} - ${date(config.endAt)}`
+    : '比赛时间未能自动读取';
+  $a('#contestConfigSummary').innerHTML = `<strong>${esc(config.officialTitle || config.contestId)}</strong><span>${esc(time)}</span><small>更新于 ${date(config.updatedAt)}</small>`;
+  $a('#contestTaskList').innerHTML = (config.tasks || []).map(task => `<span title="${esc(task.name || task.id)}">${esc(task.label || '?')}</span>`).join('');
+}
+
+async function saveAtcoderCookie() {
+  const input = $a('#atcoderCookieInput');
+  const button = $a('#saveAtcoderCookie');
+  if (!input.value.trim()) { toast('请先填写 AtCoder Cookie'); return; }
+  button.disabled = true;
+  button.textContent = '正在验证…';
+  try {
+    const config = await request('/api/admin/atcoder-leaderboard/cookie', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cookie: input.value})
+    });
+    input.value = '';
+    renderLeaderboardConfig(config);
+    toast('Cookie 验证成功并已加密保存');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = '验证并保存 Cookie';
+  }
+}
+
+async function clearAtcoderCookie() {
+  if (!confirm('确定清除后台保存的 AtCoder Cookie 吗？清除后将改用系统环境变量。')) return;
+  const button = $a('#clearAtcoderCookie');
+  button.disabled = true;
+  try {
+    const config = await request('/api/admin/atcoder-leaderboard/cookie', {method: 'DELETE'});
+    $a('#atcoderCookieInput').value = '';
+    renderLeaderboardConfig(config);
+    toast(config.cookieSource === 'ENVIRONMENT' ? '已切换为系统环境变量 Cookie' : '后台 Cookie 已清除');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveLeaderboardConfig(event) {
+  event.preventDefault();
+  const button = $a('#saveContestButton');
+  button.disabled = true;
+  button.querySelector('span').textContent = '正在验证';
+  try {
+    const config = await request('/api/admin/atcoder-leaderboard/config', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contestId: $a('#contestIdInput').value,
+        displayTitle: $a('#contestTitleInput').value
+      })
+    });
+    renderLeaderboardConfig(config);
+    toast('比赛已验证并切换，公开榜单可以开始刷新');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+    button.querySelector('span').textContent = '验证并保存';
+  }
+}
+
+function renderLeaderboardParticipants() {
+  $a('#leaderboardParticipantCount').textContent = `${leaderboardParticipants.length} 人`;
+  if (!leaderboardParticipants.length) {
+    $a('#leaderboardParticipantList').innerHTML = '<div class="participant-empty">还没有录入选手</div>';
+    return;
+  }
+  $a('#leaderboardParticipantList').innerHTML = leaderboardParticipants.map((participant, index) => `
+    <div class="participant-row">
+      <span class="participant-order">${String(index + 1).padStart(2, '0')}</span>
+      <div><strong>${esc(participant.displayName)}</strong><a href="https://atcoder.jp/users/${encodeURIComponent(participant.atcoderUsername)}" target="_blank" rel="noreferrer">@${esc(participant.atcoderUsername)}</a></div>
+      <button class="mini-btn" type="button" data-edit-leaderboard-participant="${participant.id}">编辑</button>
+      <button class="mini-btn participant-delete" type="button" data-delete-leaderboard-participant="${participant.id}">删除</button>
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-edit-leaderboard-participant]').forEach(button => {
+    button.onclick = () => editLeaderboardParticipant(Number(button.dataset.editLeaderboardParticipant));
+  });
+  document.querySelectorAll('[data-delete-leaderboard-participant]').forEach(button => {
+    button.onclick = () => deleteLeaderboardParticipant(Number(button.dataset.deleteLeaderboardParticipant));
+  });
+}
+
+function editLeaderboardParticipant(id) {
+  const participant = leaderboardParticipants.find(item => item.id === id);
+  if (!participant) return;
+  $a('#leaderboardParticipantId').value = participant.id;
+  $a('#leaderboardDisplayName').value = participant.displayName;
+  $a('#leaderboardUsername').value = participant.atcoderUsername;
+  $a('#saveLeaderboardParticipant').textContent = '保存修改';
+  $a('#cancelLeaderboardParticipant').classList.remove('hidden');
+  $a('#leaderboardDisplayName').focus();
+}
+
+function resetLeaderboardParticipantForm() {
+  $a('#leaderboardParticipantForm').reset();
+  $a('#leaderboardParticipantId').value = '';
+  $a('#saveLeaderboardParticipant').textContent = '添加选手';
+  $a('#cancelLeaderboardParticipant').classList.add('hidden');
+}
+
+async function saveLeaderboardParticipant(event) {
+  event.preventDefault();
+  const id = $a('#leaderboardParticipantId').value;
+  const button = $a('#saveLeaderboardParticipant');
+  button.disabled = true;
+  try {
+    await request(id ? `/api/admin/atcoder-leaderboard/participants/${id}` : '/api/admin/atcoder-leaderboard/participants', {
+      method: id ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        displayName: $a('#leaderboardDisplayName').value,
+        atcoderUsername: $a('#leaderboardUsername').value
+      })
+    });
+    toast(id ? '选手信息已更新' : '选手已加入排行榜');
+    resetLeaderboardParticipantForm();
+    leaderboardParticipants = await request('/api/admin/atcoder-leaderboard/participants');
+    renderLeaderboardParticipants();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function fillParticipantBatchExample() {
+  $a('#leaderboardParticipantBatch').value = JSON.stringify([
+    {realName: '张三', atcoderId: 'zhangsan'},
+    {realName: '李四', atcoderId: 'lisi_04'}
+  ], null, 2);
+}
+
+async function saveParticipantBatch() {
+  const input = $a('#leaderboardParticipantBatch');
+  const button = $a('#saveParticipantBatch');
+  let rows;
+  try {
+    rows = JSON.parse(input.value.trim());
+  } catch (_) {
+    toast('JSON 格式不正确，请检查括号、逗号和引号');
+    return;
+  }
+  if (!Array.isArray(rows)) { toast('JSON 最外层必须是数组'); return; }
+  if (!rows.length) { toast('请至少填写一名选手'); return; }
+
+  button.disabled = true;
+  button.textContent = '正在添加';
+  try {
+    const created = await request('/api/admin/atcoder-leaderboard/participants/batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(rows)
+    });
+    input.value = '';
+    leaderboardParticipants = await request('/api/admin/atcoder-leaderboard/participants');
+    renderLeaderboardParticipants();
+    toast(`已批量添加 ${created.length} 名选手`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = '批量添加';
+  }
+}
+
+async function deleteLeaderboardParticipant(id) {
+  const participant = leaderboardParticipants.find(item => item.id === id);
+  if (!participant || !confirm(`确定从排行榜移除「${participant.displayName}」吗？`)) return;
+  try {
+    await request(`/api/admin/atcoder-leaderboard/participants/${id}`, {method: 'DELETE'});
+    if (String($a('#leaderboardParticipantId').value) === String(id)) resetLeaderboardParticipantForm();
+    leaderboardParticipants = await request('/api/admin/atcoder-leaderboard/participants');
+    renderLeaderboardParticipants();
+    toast('选手已移除');
   } catch (error) {
     toast(error.message);
   }

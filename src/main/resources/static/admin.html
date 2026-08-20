@@ -3,8 +3,8 @@
 <body class="admin-body">
 <header class="topbar"><a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminLogout">退出</button></div></header>
 <main class="admin-main">
-  <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口、打字文章与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="articleTotal">—</strong><span>打字文章</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
-  <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="articles">打字文章</button><button data-panel="jobs">生成记录</button></nav>
+  <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口、打字文章、AtCoder 赛事榜单与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="articleTotal">—</strong><span>打字文章</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
+  <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="articles">打字文章</button><button data-panel="leaderboard">赛事榜单</button><button data-panel="jobs">生成记录</button></nav>
   <section class="panel admin-panel" id="usersPanel"><div class="panel-heading"><div><span class="section-number">01</span><h2>用户管理</h2></div></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>注册时间</th><th>状态</th><th>每日上限</th><th>操作</th></tr></thead><tbody id="usersBody"></tbody></table></div></section>
   <section class="panel admin-panel hidden" id="aiPanel"><div class="panel-heading"><div><span class="section-number">02</span><h2>AI 接口与生成限制</h2></div><span class="hint" id="keyState"></span></div><form id="aiForm" class="settings-form"><label>API Base URL<input id="aiBaseUrl" placeholder="https://api.example.com/v1" required></label><label>模型名称<input id="aiModel" placeholder="model-name" required></label><label>API Key<input id="aiApiKey" type="password" placeholder="留空则保持原 Key 不变"><small>密钥加密保存，保存后不会回显。</small></label><label>每用户每日生成次数上限<input id="dailyGenerationLimit" type="number" min="1" max="10000" value="30" required><small>默认 30 次；保存后对所有普通用户和管理员都生效。</small></label><button class="primary-btn" type="submit"><span>保存配置</span><b>✓</b></button></form></section>
   <section class="panel admin-panel hidden" id="articlesPanel">
@@ -24,7 +24,43 @@
       </div>
     </div>
   </section>
-  <section class="panel admin-panel hidden" id="jobsPanel"><div class="panel-heading"><div><span class="section-number">04</span><h2>生成记录</h2></div><button class="text-btn" id="refreshAdminJobs">刷新</button></div><div class="table-wrap"><table><thead><tr><th>题目</th><th>用户 ID</th><th>组数</th><th>状态</th><th>创建时间</th><th>错误</th></tr></thead><tbody id="jobsBody"></tbody></table></div></section>
+  <section class="panel admin-panel hidden" id="leaderboardPanel">
+    <div class="panel-heading"><div><span class="section-number">04</span><h2>AtCoder 赛事榜单</h2></div><a class="text-btn admin-board-link" href="/atcoder-leaderboard.html" target="_blank">打开公开榜单 ↗</a></div>
+    <div class="leaderboard-admin-grid">
+      <form id="contestConfigForm" class="leaderboard-config-form">
+        <div class="leaderboard-admin-title"><div><span>ACTIVE CONTEST</span><h3>当前比赛</h3></div><span class="cookie-state" id="atcoderCookieState">正在检查</span></div>
+        <div class="atcoder-cookie-manager">
+          <label>AtCoder Cookie<input id="atcoderCookieInput" type="password" maxlength="4096" autocomplete="new-password" placeholder="REVEL_SESSION=..."><small>仅发送到本站服务端，验证成功后加密保存，页面不会回显。</small></label>
+          <div class="cookie-manager-footer"><span id="atcoderCookieMeta">尚未配置</span><div><button class="mini-btn" id="saveAtcoderCookie" type="button">验证并保存 Cookie</button><button class="mini-btn hidden" id="clearAtcoderCookie" type="button">清除后台 Cookie</button></div></div>
+        </div>
+        <label>Contest ID<input id="contestIdInput" maxlength="64" placeholder="abc430" autocomplete="off" required><small>保存时会连接 AtCoder 官方榜单，验证比赛与 Cookie。</small></label>
+        <label>展示标题<input id="contestTitleInput" maxlength="160" placeholder="留空则使用 AtCoder 官方名称"><small>公开榜单顶部显示的标题，可使用班级内熟悉的名称。</small></label>
+        <button class="primary-btn" id="saveContestButton" type="submit"><span>验证并保存</span><b>✓</b></button>
+        <div class="contest-config-summary" id="contestConfigSummary">尚未配置比赛</div>
+        <div class="contest-task-list" id="contestTaskList"></div>
+      </form>
+      <div class="leaderboard-participants">
+        <div class="leaderboard-admin-title"><div><span>PARTICIPANTS</span><h3>榜单选手</h3></div><strong id="leaderboardParticipantCount">0 人</strong></div>
+        <form id="leaderboardParticipantForm" class="participant-form">
+          <input id="leaderboardParticipantId" type="hidden">
+          <label>展示昵称<input id="leaderboardDisplayName" maxlength="40" placeholder="例如：小明" required></label>
+          <label>AtCoder ID<input id="leaderboardUsername" maxlength="32" placeholder="tourist" autocomplete="off" required></label>
+          <button class="mini-btn participant-save" id="saveLeaderboardParticipant" type="submit">添加选手</button>
+          <button class="mini-btn hidden" id="cancelLeaderboardParticipant" type="button">取消编辑</button>
+        </form>
+        <details class="participant-bulk" id="participantBulkPanel">
+          <summary><span>批量添加选手</span><small>使用 JSON 一次录入多人</small></summary>
+          <div class="participant-bulk-body">
+            <div class="participant-bulk-heading"><span>JSON DATA</span><button class="text-btn" id="fillParticipantBatchExample" type="button">填入示例</button></div>
+            <textarea id="leaderboardParticipantBatch" rows="9" spellcheck="false" placeholder='[{"realName":"张三","atcoderId":"zhangsan"}]'></textarea>
+            <div class="participant-bulk-footer"><small>字段固定为 realName 和 atcoderId，单次最多 200 人；整批校验通过后才会保存。</small><button class="mini-btn participant-save" id="saveParticipantBatch" type="button">批量添加</button></div>
+          </div>
+        </details>
+        <div class="participant-list" id="leaderboardParticipantList"><div class="participant-empty">正在读取选手…</div></div>
+      </div>
+    </div>
+  </section>
+  <section class="panel admin-panel hidden" id="jobsPanel"><div class="panel-heading"><div><span class="section-number">05</span><h2>生成记录</h2></div><button class="text-btn" id="refreshAdminJobs">刷新</button></div><div class="table-wrap"><table><thead><tr><th>题目</th><th>用户 ID</th><th>组数</th><th>状态</th><th>创建时间</th><th>错误</th></tr></thead><tbody id="jobsBody"></tbody></table></div></section>
 </main>
 <section id="jobDetailModal" class="modal-view hidden" aria-live="polite">
   <div class="panel result-panel admin-job-detail">

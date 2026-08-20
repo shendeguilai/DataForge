@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="DataForge AtCoder 单场比赛实时排行榜">
+    <title>AtCoder 实时排行榜 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/atcoder-leaderboard.css">
+</head>
+<body class="leaderboard-body">
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span><span>DataForge</span><small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span><button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <button class="ghost-btn" data-portal-auth="login" type="button">登录</button><button class="ghost-btn" data-portal-auth="register" type="button">注册</button>
+    </div>
+</header>
+
+<main class="leaderboard-main">
+    <section class="leaderboard-heading">
+        <div>
+            <a class="text-btn leaderboard-back" href="/tools.html">← 返回工具列表</a>
+            <div class="eyebrow"><span></span> CONTEST LIVE</div>
+            <div class="title-line"><h1 id="contestTitle">AtCoder 实时排行榜</h1><span class="contest-state unknown" id="contestState">等待配置</span></div>
+            <p id="contestMeta">为已录入选手整理的单场比赛实时赛况。</p>
+        </div>
+        <div class="refresh-controls">
+            <div class="sync-state"><span class="live-dot"></span><div><strong id="syncLabel">尚未同步</strong><small id="countdownLabel">每 60 秒自动刷新</small></div></div>
+            <button class="refresh-button hidden" id="refreshButton" type="button" title="管理员手动刷新 AtCoder 数据">
+                <span aria-hidden="true">↻</span><b>手动刷新</b>
+            </button>
+        </div>
+    </section>
+
+    <section class="notice-strip hidden" id="noticeStrip" aria-live="polite"></section>
+
+    <section class="leaderboard-summary" id="summaryPanel">
+        <div><span>已录入</span><strong><b id="participantTotal">0</b><small> 名选手</small></strong></div>
+        <div><span>已上榜</span><strong><b id="rankedTotal">0</b><small> 人有赛况</small></strong></div>
+        <div><span>领跑选手</span><strong id="leaderName">—</strong></div>
+        <div><span>刷新频率</span><strong><b>60</b><small> 秒</small></strong></div>
+    </section>
+
+    <section class="board-panel">
+        <div class="board-toolbar">
+            <div class="board-title"><span class="section-number">01</span><div><h2>班级实时排名</h2><p>按官方得分与罚时排序</p></div></div>
+            <div class="board-actions"><span id="pageSummary">每页 50 人</span><a class="official-link hidden" id="officialLink" target="_blank" rel="noreferrer">官方榜单 ↗</a></div>
+        </div>
+        <div class="board-state" id="boardState">正在读取排行榜…</div>
+        <div class="leaderboard-scroll hidden" id="tableWrap">
+            <table class="leaderboard-table">
+                <thead><tr id="leaderboardHead"></tr></thead>
+                <tbody id="leaderboardBody"></tbody>
+            </table>
+        </div>
+        <nav class="board-pagination hidden" id="boardPagination" aria-label="排行榜分页"></nav>
+    </section>
+</main>
+
+<footer><span>DataForge / AtCoder Leaderboard</span><span>赛时数据每 60 秒同步一次。</span></footer>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/atcoder-leaderboard.js"></script>
+</body>
+</html>
