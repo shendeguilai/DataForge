@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DataForge 后台</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/ui-fixes.css?v=2"><link rel="stylesheet" href="/auth.css"><link rel="stylesheet" href="/admin.css"></head>
 <body class="admin-body">
-<header class="topbar"><a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminLogout">退出</button></div></header>
+<header class="topbar"><a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminChangePassword" type="button">修改密码</button><button class="logout-btn" id="adminLogout" type="button">退出</button></div></header>
 <main class="admin-main">
   <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口、打字文章、AtCoder 赛事榜单与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="articleTotal">—</strong><span>打字文章</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
   <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="articles">打字文章</button><button data-panel="leaderboard">赛事榜单</button><button data-panel="jobs">生成记录</button></nav>
@@ -38,6 +38,14 @@
         <button class="primary-btn" id="saveContestButton" type="submit"><span>验证并保存</span><b>✓</b></button>
         <div class="contest-config-summary" id="contestConfigSummary">尚未配置比赛</div>
         <div class="contest-task-list" id="contestTaskList"></div>
+        <section class="translation-manager" aria-labelledby="translationManagerTitle">
+          <div class="translation-manager-heading"><div><span>PROBLEM TRANSLATION</span><h4 id="translationManagerTitle">赛题翻译</h4></div><strong id="translationProgressText">尚未开始</strong></div>
+          <div class="translation-progress" role="progressbar" aria-label="赛题翻译进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="translationProgressBar"></i></div>
+          <div class="translation-ai-state" id="translationAiState">正在读取 AI 接口配置…</div>
+          <p id="translationStatusText">配置比赛后，可使用现有 AI 接口翻译全部英文题面。</p>
+          <div class="translation-actions"><button class="mini-btn participant-save" id="translateAllProblems" type="button">一键获取并翻译</button><button class="mini-btn hidden" id="retranslateAllProblems" type="button">重新翻译全部</button></div>
+          <div class="translation-task-list" id="translationTaskList"></div>
+        </section>
       </form>
       <div class="leaderboard-participants">
         <div class="leaderboard-admin-title"><div><span>PARTICIPANTS</span><h3>榜单选手</h3></div><strong id="leaderboardParticipantCount">0 人</strong></div>
@@ -62,6 +70,31 @@
   </section>
   <section class="panel admin-panel hidden" id="jobsPanel"><div class="panel-heading"><div><span class="section-number">05</span><h2>生成记录</h2></div><button class="text-btn" id="refreshAdminJobs">刷新</button></div><div class="table-wrap"><table><thead><tr><th>题目</th><th>用户 ID</th><th>组数</th><th>状态</th><th>创建时间</th><th>错误</th></tr></thead><tbody id="jobsBody"></tbody></table></div></section>
 </main>
+<section id="translationEditorModal" class="modal-view hidden" role="dialog" aria-modal="true" aria-labelledby="translationEditorTitle">
+  <div class="panel result-panel translation-editor-modal">
+    <button class="modal-x" id="closeTranslationEditorX" type="button" aria-label="关闭译文编辑器">×</button>
+    <button class="close-btn" id="closeTranslationEditor" type="button">← 关闭编辑器</button>
+    <div class="result-kicker">PROBLEM TRANSLATION EDITOR</div>
+    <div class="translation-editor-heading">
+      <div><span id="translationEditorLabel">?</span><h2 id="translationEditorTitle">题面译文</h2></div>
+      <strong id="translationEditorStatus">—</strong>
+    </div>
+    <div id="translationEditorTaskError" class="translation-editor-task-error hidden"></div>
+    <div class="translation-reference-grid">
+      <section><div class="translation-reference-title"><h3>英文原题</h3><span>只读</span></div><div class="translation-reference-content" id="translationSourcePreview"></div></section>
+      <section id="translationDraftPanel"><div class="translation-reference-title"><h3>AI 返回草稿</h3><span>失败时也会保留</span></div><div class="translation-reference-content" id="translationDraftPreview"></div></section>
+    </div>
+    <section class="translation-editor-workspace">
+      <div class="translation-editor-toolbar"><div><h3>正式中文译文</h3><span>直接点击正文修改；保存时会自动清理 HTML 并恢复公式和样例。</span></div><button class="mini-btn" id="resetTranslationEditor" type="button">恢复打开时内容</button></div>
+      <div class="translation-editable" id="translationEditable" contenteditable="true" role="textbox" aria-multiline="true" aria-label="正式中文译文"></div>
+    </section>
+    <div class="translation-editor-footer">
+      <span id="translationEditorMeta">尚未保存</span>
+      <div><button class="mini-btn" id="retranslateEditorTask" type="button">重新翻译此题</button><button class="mini-btn participant-save" id="saveTranslationEditor" type="button">保存人工译文</button></div>
+    </div>
+    <div id="translationEditorError" class="error-box hidden"></div>
+  </div>
+</section>
 <section id="jobDetailModal" class="modal-view hidden" aria-live="polite">
   <div class="panel result-panel admin-job-detail">
     <button class="modal-x" id="closeJobDetailX" type="button" aria-label="关闭">×</button>
@@ -91,6 +124,34 @@
       </div>
     </details>
     <div id="jobDetailError" class="error-box hidden"></div>
+  </div>
+</section>
+<section id="adminPasswordModal" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="adminPasswordTitle">
+  <div class="auth-card password-card">
+    <button class="auth-close" id="closeAdminPassword" type="button" aria-label="关闭修改密码">×</button>
+    <div class="result-kicker">ACCOUNT SECURITY</div>
+    <form id="adminPasswordForm" class="auth-form">
+      <h2 id="adminPasswordTitle">修改密码</h2><p>请验证当前密码，新密码需为 8～72 位。</p>
+      <label>当前密码<input id="adminCurrentPassword" type="password" autocomplete="current-password" required></label>
+      <label>新密码<input id="adminNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+      <label>确认新密码<input id="adminConfirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+      <button class="primary-btn wide" type="submit"><span>保存新密码</span><b>✓</b></button>
+    </form>
+    <div id="adminPasswordError" class="error-box hidden"></div>
+  </div>
+</section>
+<section id="resetPasswordModal" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
+  <div class="auth-card password-card">
+    <button class="auth-close" id="closeResetPassword" type="button" aria-label="关闭重置密码">×</button>
+    <div class="result-kicker">ADMIN ACTION</div>
+    <form id="resetPasswordForm" class="auth-form">
+      <h2 id="resetPasswordTitle">重置用户密码</h2><p>正在为 <strong id="resetPasswordUsername"></strong> 设置新密码。</p>
+      <input id="resetPasswordUserId" type="hidden">
+      <label>新密码<input id="resetNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+      <label>确认新密码<input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+      <button class="primary-btn wide" type="submit"><span>确认重置</span><b>✓</b></button>
+    </form>
+    <div id="resetPasswordError" class="error-box hidden"></div>
   </div>
 </section>
 <div id="adminToast" class="toast"></div><script src="/admin.js"></script></body></html>

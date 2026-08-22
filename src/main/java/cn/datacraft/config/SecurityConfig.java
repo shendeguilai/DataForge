@@ -24,13 +24,15 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/", "/index.html", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html",
-                        "/atcoder.html", "/atcoder-leaderboard.html", "/typing-pk.html", "/quiz-join.html",
-                        "/styles.css", "/portal.css", "/hanoi.css", "/fenwick.css", "/atcoder.css", "/atcoder-leaderboard.css", "/typing-pk.css", "/quiz.css",
+                        "/atcoder.html", "/atcoder-leaderboard.html", "/atcoder-problems.html", "/typing-pk.html", "/quiz-join.html",
+                        "/styles.css", "/portal.css", "/hanoi.css", "/fenwick.css", "/atcoder.css", "/atcoder-leaderboard.css", "/atcoder-problems.css", "/typing-pk.css", "/quiz.css",
                         "/ui-fixes.css", "/auth.css",
-                        "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js", "/atcoder-leaderboard.js", "/typing-pk.js", "/quiz-common.js", "/quiz-join.js",
-                        "/quiz-cards/**", "/error", "/api/auth/**", "/api/tools/atcoder/**", "/ws/tools/typing", "/ws/tools/quiz",
+                        "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js", "/atcoder-leaderboard.js", "/atcoder-problems.js", "/typing-pk.js", "/quiz-common.js", "/quiz-join.js",
+                        "/quiz-cards/**", "/webjars/**", "/error", "/api/tools/atcoder/**", "/ws/tools/typing", "/ws/tools/quiz",
                         "/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/tools/atcoder-leaderboard").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/tools/atcoder-problems", "/api/tools/atcoder-problems/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/tools/atcoder-leaderboard/refresh").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/tools/typing/rooms", "/api/tools/typing/rooms/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/tools/typing/rooms/*/join", "/api/tools/typing/rooms/*/leave").permitAll()

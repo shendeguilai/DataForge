@@ -46,6 +46,7 @@ public class AtcoderLeaderboardService {
     private final AtcoderLeaderboardConfigRepository configs;
     private final AtcoderLeaderboardParticipantRepository participants;
     private final AtcoderStandingsGateway gateway;
+    private final AtcoderProblemTranslationService problemTranslations;
     private final ObjectMapper mapper;
     private final Clock clock;
     private final ReentrantLock refreshLock = new ReentrantLock();
@@ -58,16 +59,26 @@ public class AtcoderLeaderboardService {
     public AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
                                      AtcoderLeaderboardParticipantRepository participants,
                                      AtcoderStandingsGateway gateway,
+                                     AtcoderProblemTranslationService problemTranslations,
                                      ObjectMapper mapper) {
-        this(configs, participants, gateway, mapper, Clock.systemUTC());
+        this(configs, participants, gateway, problemTranslations, mapper, Clock.systemUTC());
     }
 
     AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
                               AtcoderLeaderboardParticipantRepository participants,
                               AtcoderStandingsGateway gateway, ObjectMapper mapper, Clock clock) {
+        this(configs, participants, gateway, null, mapper, clock);
+    }
+
+    AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
+                              AtcoderLeaderboardParticipantRepository participants,
+                              AtcoderStandingsGateway gateway,
+                              AtcoderProblemTranslationService problemTranslations,
+                              ObjectMapper mapper, Clock clock) {
         this.configs = configs;
         this.participants = participants;
         this.gateway = gateway;
+        this.problemTranslations = problemTranslations;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -124,6 +135,9 @@ public class AtcoderLeaderboardService {
     public AdminConfigView saveConfig(String rawContestId, String rawDisplayTitle) {
         String contestId = normalizeContestId(rawContestId);
         String requestedTitle = normalizeOptionalTitle(rawDisplayTitle);
+        Optional<AtcoderLeaderboardConfig> existingConfig = configs
+                .findById(AtcoderLeaderboardConfig.SINGLETON_ID);
+        String previousContestId = existingConfig.map(AtcoderLeaderboardConfig::getContestId).orElse(null);
 
         AtcoderStandings.Snapshot standings = gateway.fetchStandings(contestId);
         AtcoderStandings.ContestMetadata metadata = gateway.fetchMetadata(contestId);
@@ -132,12 +146,15 @@ public class AtcoderLeaderboardService {
         Instant now = clock.instant();
         String tasksJson = writeTasks(standings.tasks());
 
-        AtcoderLeaderboardConfig config = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID)
+        AtcoderLeaderboardConfig config = existingConfig
                 .orElseGet(() -> new AtcoderLeaderboardConfig(
                         contestId, displayTitle, officialTitle, metadata.startAt(), metadata.endAt(), tasksJson, now
                 ));
         config.update(contestId, displayTitle, officialTitle, metadata.startAt(), metadata.endAt(), tasksJson, now);
         configs.saveAndFlush(config);
+        if (problemTranslations != null) {
+            problemTranslations.onContestChanged(previousContestId, contestId);
+        }
 
         refreshLock.lock();
         try {

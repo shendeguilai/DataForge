@@ -26,6 +26,7 @@
         <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
         <button class="ghost-btn" id="historyButton" type="button">最近任务 <span id="historyCount">0</span></button>
         <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="changePasswordButton" type="button">修改密码</button>
         <button class="logout-btn" id="logoutButton" type="button">退出</button>
     </div>
     <div class="account-actions" id="anonymousActions">
@@ -181,6 +182,21 @@
             <button class="primary-btn wide" type="submit"><span>注册并登录</span><b>→</b></button>
         </form>
         <div id="authError" class="error-box hidden"></div>
+    </div>
+</section>
+
+<section id="passwordView" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="passwordTitle">
+    <div class="auth-card password-card">
+        <button class="auth-close" id="closePassword" type="button" aria-label="关闭修改密码">×</button>
+        <div class="result-kicker">ACCOUNT SECURITY</div>
+        <form id="passwordForm" class="auth-form">
+            <h2 id="passwordTitle">修改密码</h2><p>请验证当前密码，新密码需为 8～72 位。</p>
+            <label>当前密码<input id="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label>新密码<input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+            <label>确认新密码<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+            <button class="primary-btn wide" type="submit"><span>保存新密码</span><b>✓</b></button>
+        </form>
+        <div id="passwordError" class="error-box hidden"></div>
     </div>
 </section>
 

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="DataForge AtCoder 中文题面阅读页">
+    <title>AtCoder 翻译题面 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/webjars/katex/0.16.11/dist/katex.min.css">
+    <link rel="stylesheet" href="/atcoder-problems.css">
+</head>
+<body class="problems-body">
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span><span>DataForge</span><small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span><button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <button class="ghost-btn" data-portal-auth="login" type="button">登录</button><button class="ghost-btn" data-portal-auth="register" type="button">注册</button>
+    </div>
+</header>
+
+<main class="problems-main">
+    <section class="problems-heading">
+        <div>
+            <a class="problems-back" href="/atcoder-leaderboard.html">← 返回实时排行榜</a>
+            <div class="eyebrow"><span></span> TRANSLATED PROBLEMS</div>
+            <h1 id="problemContestTitle">AtCoder 翻译题面</h1>
+            <p id="problemContestMeta">正在读取当前比赛题目…</p>
+        </div>
+        <a class="official-contest-link hidden" id="officialContestLink" target="_blank" rel="noreferrer">打开官方比赛页 ↗</a>
+    </section>
+
+    <section class="problem-workspace">
+        <div class="task-bar">
+            <div class="task-bar-label"><span>题目</span><strong id="taskProgress">0 / 0 已翻译</strong></div>
+            <nav class="task-tabs" id="taskTabs" aria-label="比赛题目"></nav>
+        </div>
+
+        <article class="statement-paper">
+            <header class="statement-header">
+                <div class="statement-title-row">
+                    <span class="task-letter" id="taskLetter">?</span>
+                    <div><span id="taskContestId">ATCODER</span><h2 id="taskTitle">选择一道题目</h2></div>
+                </div>
+                <div class="statement-actions">
+                    <div class="language-switch" role="group" aria-label="题面语言">
+                        <button class="active" id="showChinese" type="button">中文译文</button>
+                        <button id="showEnglish" type="button">English</button>
+                    </div>
+                    <a class="official-task-link hidden" id="officialTaskLink" target="_blank" rel="noreferrer">官方原题 ↗</a>
+                </div>
+            </header>
+
+            <div class="translation-notice"><strong>译</strong><span>AI 翻译可能存在偏差，请以英文原题为准。</span><small id="translatedTime"></small></div>
+            <div class="statement-state" id="statementState" aria-live="polite">正在载入题目…</div>
+            <div class="statement-content hidden" id="statementContent"></div>
+        </article>
+    </section>
+</main>
+
+<footer><span>DataForge / AtCoder Problems</span><span>仅提供题面翻译，不提供题意总结或解题提示。</span></footer>
+<div id="problemToast" class="toast" role="alert"></div>
+<script defer src="/webjars/katex/0.16.11/dist/katex.min.js"></script>
+<script defer src="/webjars/katex/0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="/portal.js"></script>
+<script defer src="/atcoder-problems.js"></script>
+</body>
+</html>

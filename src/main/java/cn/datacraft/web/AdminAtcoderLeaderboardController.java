@@ -7,6 +7,9 @@ import cn.datacraft.atcoder.AtcoderLeaderboardDtos.BulkParticipantRequest;
 import cn.datacraft.atcoder.AtcoderLeaderboardDtos.ParticipantRequest;
 import cn.datacraft.atcoder.AtcoderLeaderboardDtos.ParticipantView;
 import cn.datacraft.atcoder.AtcoderLeaderboardService;
+import cn.datacraft.atcoder.AtcoderProblemDtos.ProblemOverviewView;
+import cn.datacraft.atcoder.AtcoderProblemDtos.AdminProblemDetailView;
+import cn.datacraft.atcoder.AtcoderProblemTranslationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +27,12 @@ import java.util.List;
 @RequestMapping("/api/admin/atcoder-leaderboard")
 public class AdminAtcoderLeaderboardController {
     private final AtcoderLeaderboardService leaderboard;
+    private final AtcoderProblemTranslationService translations;
 
-    public AdminAtcoderLeaderboardController(AtcoderLeaderboardService leaderboard) {
+    public AdminAtcoderLeaderboardController(AtcoderLeaderboardService leaderboard,
+                                             AtcoderProblemTranslationService translations) {
         this.leaderboard = leaderboard;
+        this.translations = translations;
     }
 
     @GetMapping("/config")
@@ -75,5 +81,43 @@ public class AdminAtcoderLeaderboardController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteParticipant(@PathVariable Long id) {
         leaderboard.deleteParticipant(id);
+    }
+
+    @GetMapping("/translations")
+    public ProblemOverviewView translations() {
+        return translations.adminOverview();
+    }
+
+    @PostMapping("/translations")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView translateAll() {
+        return translations.startAll(false);
+    }
+
+    @PostMapping("/translations/retranslate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView retranslateAll() {
+        return translations.startAll(true);
+    }
+
+    @PostMapping("/translations/{taskId}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView retryTranslation(@PathVariable String taskId) {
+        return translations.retryTask(taskId);
+    }
+
+    @GetMapping("/translations/{taskId}")
+    public AdminProblemDetailView translationDetail(@PathVariable String taskId) {
+        return translations.adminDetail(taskId);
+    }
+
+    @PutMapping("/translations/{taskId}")
+    public AdminProblemDetailView saveTranslation(@PathVariable String taskId,
+                                                   @RequestBody TranslationEditRequest request) {
+        return translations.saveManualTranslation(taskId, request.translatedHtml);
+    }
+
+    public static class TranslationEditRequest {
+        public String translatedHtml;
     }
 }

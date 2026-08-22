@@ -8,18 +8,26 @@ let currentTasks = [];
 let currentEntries = [];
 let currentContestId = '';
 let canManualRefresh = false;
+let problemPollTimer = null;
 const PAGE_SIZE = 50;
 
 refreshButton?.addEventListener('click', () => {
   if (canManualRefresh) loadLeaderboard(true);
 });
+board$('#problemButton')?.addEventListener('click', event => {
+  if (event.currentTarget.classList.contains('disabled')) event.preventDefault();
+});
 window.addEventListener('dataforge:auth-changed', event => setManualRefreshAccess(event.detail));
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) loadLeaderboard(false);
+  if (!document.hidden) {
+    loadLeaderboard(false);
+    loadProblemOverview();
+  }
 });
 
 loadManualRefreshAccess();
 startClock();
+loadProblemOverview();
 loadLeaderboard(false);
 
 async function loadManualRefreshAccess() {
@@ -48,6 +56,7 @@ async function loadLeaderboard(manual) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `排行榜读取失败 (${response.status})`);
     renderLeaderboard(payload);
+    loadProblemOverview();
     countdown = payload.refreshCooldownSeconds > 0 ? payload.refreshCooldownSeconds : (payload.refreshAfterSeconds || 60);
     if (manual && payload.refreshCooldownSeconds > 0) showToast(`刷新过于频繁，请等待 ${payload.refreshCooldownSeconds} 秒`);
   } catch (error) {
@@ -58,6 +67,34 @@ async function loadLeaderboard(manual) {
     refreshButton.disabled = false;
     refreshButton.querySelector('b').textContent = '手动刷新';
   }
+}
+
+async function loadProblemOverview() {
+  clearTimeout(problemPollTimer);
+  try {
+    const response = await fetch('/api/tools/atcoder-problems');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error();
+    renderProblemButton(data);
+    if (data.running) problemPollTimer = setTimeout(loadProblemOverview, 3000);
+  } catch (_) {
+    renderProblemButton(null);
+  }
+}
+
+function renderProblemButton(data) {
+  const button = board$('#problemButton');
+  if (!button) return;
+  const ready = data?.readyCount || 0;
+  const total = data?.totalCount || 0;
+  const available = ready > 0 || Boolean(data?.running);
+  button.classList.toggle('disabled', !available);
+  button.classList.toggle('running', Boolean(data?.running));
+  button.setAttribute('aria-disabled', String(!available));
+  if (data?.running) button.querySelector('b').textContent = `题面翻译中 ${ready}/${total}`;
+  else if (ready) button.querySelector('b').textContent = ready === total ? '查看翻译题面' : `查看翻译题面 ${ready}/${total}`;
+  else if (data?.status === 'FAILED') button.querySelector('b').textContent = '题面翻译失败';
+  else button.querySelector('b').textContent = '题面暂未准备';
 }
 
 function startClock() {

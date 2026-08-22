@@ -50,6 +50,12 @@ public class AuthController {
         return view(users.requireByUsername(auth.getName()));
     }
 
+    @PutMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication auth) {
+        users.changePassword(auth.getName(), request.currentPassword, request.newPassword);
+    }
+
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(HttpServletRequest request) {
@@ -65,4 +71,5 @@ public class AuthController {
     }
     public static class LoginRequest { @NotBlank public String username; @NotBlank public String password; }
     public static class RegisterRequest extends LoginRequest { @NotBlank public String inviteCode; }
+    public static class ChangePasswordRequest { @NotBlank public String currentPassword; @NotBlank public String newPassword; }
 }

@@ -1,8 +1,14 @@
 const $a = s => document.querySelector(s);
 let adminSettings = {dailyGenerationLimit: 30};
+let currentAdmin = null;
+let adminUsers = [];
 let adminJobs = [];
 let adminArticles = [];
 let leaderboardParticipants = [];
+let leaderboardTranslations = null;
+let translationAdminTimer = null;
+let translationEditorTaskId = '';
+let translationEditorInitialHtml = '';
 
 async function request(url, options = {}) {
   const r = await fetch(url, options);
@@ -15,6 +21,7 @@ async function init() {
   try {
     const me = await request('/api/auth/me');
     if (me.role !== 'ADMIN') { location.href = '/'; return; }
+    currentAdmin = me;
     $a('#adminName').textContent = me.username;
     bind();
     await loadConfig();
@@ -40,8 +47,22 @@ function bind() {
   $a('#cancelLeaderboardParticipant').onclick = resetLeaderboardParticipantForm;
   $a('#fillParticipantBatchExample').onclick = fillParticipantBatchExample;
   $a('#saveParticipantBatch').onclick = saveParticipantBatch;
+  $a('#translateAllProblems').onclick = () => startProblemTranslations(false);
+  $a('#retranslateAllProblems').onclick = () => startProblemTranslations(true);
+  $a('#closeTranslationEditor').onclick = closeTranslationEditor;
+  $a('#closeTranslationEditorX').onclick = closeTranslationEditor;
+  $a('#resetTranslationEditor').onclick = () => {
+    $a('#translationEditable').innerHTML = translationEditorInitialHtml;
+  };
+  $a('#saveTranslationEditor').onclick = saveTranslationEditor;
+  $a('#retranslateEditorTask').onclick = () => retryProblemTranslation(translationEditorTaskId, true);
   $a('#closeJobDetail').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   $a('#closeJobDetailX').onclick = () => $a('#jobDetailModal').classList.add('hidden');
+  $a('#adminChangePassword').onclick = showAdminPassword;
+  $a('#closeAdminPassword').onclick = hideAdminPassword;
+  $a('#adminPasswordForm').onsubmit = changeAdminPassword;
+  $a('#closeResetPassword').onclick = hideResetPassword;
+  $a('#resetPasswordForm').onsubmit = resetUserPassword;
   document.querySelectorAll('[data-copy-target]').forEach(b => b.onclick = () => copyTargetText(b.dataset.copyTarget));
   $a('#adminLogout').onclick = async () => { await fetch('/api/auth/logout', {method:'POST'}); location.href = '/'; };
 }
@@ -53,12 +74,14 @@ function switchPanel(name) {
 
 async function loadUsers() {
   const users = await request('/api/admin/users');
+  adminUsers = users;
   const defaultLimit = adminSettings.dailyGenerationLimit || 30;
   $a('#userTotal').textContent = users.length;
   $a('#usersBody').innerHTML = users.map(u => {
     const limit = u.dailyGenerationLimit || defaultLimit;
     const toggle = u.role === 'ADMIN' ? '—' : `<button class="mini-btn" data-user-id="${u.id}" data-enabled="${!u.enabled}">${u.enabled ? '禁用' : '启用'}</button>`;
-    return `<tr><td>${u.id}</td><td><strong>${esc(u.username)}</strong></td><td>${u.role}</td><td>${date(u.createdAt)}</td><td><span class="badge ${u.enabled ? '' : 'off'}">${u.enabled ? '正常' : '已禁用'}</span></td><td><input class="quota-input" data-quota-id="${u.id}" type="number" min="1" max="10000" value="${limit}"></td><td>${toggle}<button class="mini-btn" data-quota-save="${u.id}">保存额度</button></td></tr>`;
+    const reset = u.username === currentAdmin.username ? '' : `<button class="mini-btn" data-password-reset="${u.id}">重置密码</button>`;
+    return `<tr><td>${u.id}</td><td><strong>${esc(u.username)}</strong></td><td>${u.role}</td><td>${date(u.createdAt)}</td><td><span class="badge ${u.enabled ? '' : 'off'}">${u.enabled ? '正常' : '已禁用'}</span></td><td><input class="quota-input" data-quota-id="${u.id}" type="number" min="1" max="10000" value="${limit}"></td><td>${toggle}<button class="mini-btn" data-quota-save="${u.id}">保存额度</button>${reset}</td></tr>`;
   }).join('');
   document.querySelectorAll('[data-user-id]').forEach(b => b.onclick = async () => {
     await request(`/api/admin/users/${b.dataset.userId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled:b.dataset.enabled === 'true'})});
@@ -70,6 +93,93 @@ async function loadUsers() {
     toast('用户额度已保存');
     await loadUsers();
   });
+  document.querySelectorAll('[data-password-reset]').forEach(b => {
+    b.onclick = () => showResetPassword(Number(b.dataset.passwordReset));
+  });
+}
+
+function showAdminPassword() {
+  $a('#adminPasswordForm').reset();
+  $a('#adminPasswordError').classList.add('hidden');
+  $a('#adminPasswordModal').classList.remove('hidden');
+  setTimeout(() => $a('#adminCurrentPassword').focus(), 0);
+}
+
+function hideAdminPassword() {
+  $a('#adminPasswordModal').classList.add('hidden');
+  $a('#adminPasswordError').classList.add('hidden');
+}
+
+async function changeAdminPassword(event) {
+  event.preventDefault();
+  const errorBox = $a('#adminPasswordError');
+  const newPassword = $a('#adminNewPassword').value;
+  if (newPassword !== $a('#adminConfirmPassword').value) {
+    errorBox.textContent = '两次输入的新密码不一致';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+  const button = $a('#adminPasswordForm button[type="submit"]');
+  button.disabled = true;
+  errorBox.classList.add('hidden');
+  try {
+    await request('/api/auth/password', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({currentPassword: $a('#adminCurrentPassword').value, newPassword})
+    });
+    hideAdminPassword();
+    toast('密码修改成功');
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showResetPassword(id) {
+  const user = adminUsers.find(item => item.id === id);
+  if (!user) { toast('用户不存在或列表已刷新'); return; }
+  $a('#resetPasswordForm').reset();
+  $a('#resetPasswordUserId').value = user.id;
+  $a('#resetPasswordUsername').textContent = user.username;
+  $a('#resetPasswordError').classList.add('hidden');
+  $a('#resetPasswordModal').classList.remove('hidden');
+  setTimeout(() => $a('#resetNewPassword').focus(), 0);
+}
+
+function hideResetPassword() {
+  $a('#resetPasswordModal').classList.add('hidden');
+  $a('#resetPasswordError').classList.add('hidden');
+}
+
+async function resetUserPassword(event) {
+  event.preventDefault();
+  const errorBox = $a('#resetPasswordError');
+  const newPassword = $a('#resetNewPassword').value;
+  if (newPassword !== $a('#resetConfirmPassword').value) {
+    errorBox.textContent = '两次输入的新密码不一致';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+  const button = $a('#resetPasswordForm button[type="submit"]');
+  button.disabled = true;
+  errorBox.classList.add('hidden');
+  try {
+    await request(`/api/admin/users/${$a('#resetPasswordUserId').value}/password`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({newPassword})
+    });
+    hideResetPassword();
+    toast('用户密码已重置');
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadConfig() {
@@ -79,6 +189,19 @@ async function loadConfig() {
   $a('#aiModel').value = c.model || '';
   $a('#dailyGenerationLimit').value = c.dailyGenerationLimit || 30;
   $a('#keyState').textContent = c.apiKeyConfigured ? 'API Key 已配置' : '尚未配置 API Key';
+  renderTranslationAiState();
+  if (leaderboardTranslations) renderLeaderboardTranslations(leaderboardTranslations);
+}
+
+function renderTranslationAiState() {
+  const configured = Boolean(adminSettings?.apiKeyConfigured && adminSettings?.baseUrl && adminSettings?.model);
+  const deepseek = String(adminSettings?.baseUrl || '').toLowerCase().includes('deepseek.com')
+    || String(adminSettings?.model || '').toLowerCase().startsWith('deepseek-');
+  const state = $a('#translationAiState');
+  state.classList.toggle('ready', configured);
+  state.textContent = configured
+    ? `AI 接口已就绪 · ${adminSettings.model} · ${deepseek ? '深度思考 high' : '标准模式'}`
+    : 'AI 接口未配置 · 请先在“AI 接口”标签填写 Base URL、模型和 API Key';
 }
 
 async function saveConfig(e) {
@@ -213,13 +336,15 @@ async function deleteArticle(id) {
 }
 
 async function loadLeaderboardAdmin() {
-  const [config, participants] = await Promise.all([
+  const [config, participants, translations] = await Promise.all([
     request('/api/admin/atcoder-leaderboard/config'),
-    request('/api/admin/atcoder-leaderboard/participants')
+    request('/api/admin/atcoder-leaderboard/participants'),
+    request('/api/admin/atcoder-leaderboard/translations')
   ]);
   renderLeaderboardConfig(config);
   leaderboardParticipants = participants;
   renderLeaderboardParticipants();
+  renderLeaderboardTranslations(translations);
 }
 
 function renderLeaderboardConfig(config) {
@@ -247,6 +372,167 @@ function renderLeaderboardConfig(config) {
     : '比赛时间未能自动读取';
   $a('#contestConfigSummary').innerHTML = `<strong>${esc(config.officialTitle || config.contestId)}</strong><span>${esc(time)}</span><small>更新于 ${date(config.updatedAt)}</small>`;
   $a('#contestTaskList').innerHTML = (config.tasks || []).map(task => `<span title="${esc(task.name || task.id)}">${esc(task.label || '?')}</span>`).join('');
+}
+
+async function loadLeaderboardTranslations() {
+  try {
+    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations'));
+  } catch (error) {
+    $a('#translationStatusText').textContent = error.message;
+  }
+}
+
+function renderLeaderboardTranslations(data) {
+  leaderboardTranslations = data;
+  clearTimeout(translationAdminTimer);
+  const total = data?.totalCount || 0;
+  const ready = data?.readyCount || 0;
+  const percent = total ? Math.round(ready * 100 / total) : 0;
+  $a('#translationProgressText').textContent = total ? `${ready} / ${total}` : '尚未开始';
+  $a('#translationProgressBar').style.width = `${percent}%`;
+  $a('.translation-progress').setAttribute('aria-valuenow', String(percent));
+  const labels = {
+    NOT_CONFIGURED: '请先配置并保存当前比赛。',
+    NOT_STARTED: '题目列表已准备，可以开始获取并翻译英文题面。',
+    RUNNING: `正在后台处理题面，已完成 ${ready} / ${total} 道。`,
+    READY: '全部题面翻译完成，公开阅读页已经可以使用。',
+    PARTIAL: `已有 ${ready} 道可阅读，失败题目可以单独重试。`,
+    FAILED: '本次没有成功翻译题目，请查看各题错误后重试。'
+  };
+  $a('#translationStatusText').textContent = labels[data?.status] || '等待翻译状态。';
+  const start = $a('#translateAllProblems');
+  const retranslate = $a('#retranslateAllProblems');
+  const aiConfigured = Boolean(adminSettings?.apiKeyConfigured && adminSettings?.baseUrl && adminSettings?.model);
+  start.disabled = !data?.configured || data.running || !aiConfigured;
+  start.textContent = data?.running ? '正在翻译…' : (ready ? '继续翻译未完成题目' : '一键获取并翻译');
+  retranslate.classList.toggle('hidden', !ready);
+  retranslate.disabled = Boolean(data?.running) || !aiConfigured;
+  $a('#translationTaskList').innerHTML = (data?.tasks || []).map(task => {
+    const status = translationStatus(task.status);
+    const running = ['QUEUED', 'FETCHING', 'TRANSLATING'].includes(task.status) || data?.running;
+    const edit = task.hasSource
+      ? `<button type="button" class="mini-btn" data-edit-translation="${esc(task.id)}">查看/编辑</button>` : '';
+    const retryLabel = task.status === 'READY' ? '重新翻译' : (task.status === 'NOT_STARTED' ? '翻译' : '重试翻译');
+    const retry = running ? ''
+      : `<button type="button" class="mini-btn" data-retry-translation="${esc(task.id)}">${retryLabel}</button>`;
+    const error = translationError(task.error);
+    const title = task.hasSource
+      ? `<button type="button" class="translation-task-open" data-edit-translation="${esc(task.id)}">${esc(task.name || task.id)}</button>`
+      : `<strong>${esc(task.name || task.id)}</strong>`;
+    return `<div class="translation-task-row ${String(task.status || '').toLowerCase()}"><b>${esc(task.label || '?')}</b><div>${title}${error ? `<small>${esc(error)}</small>` : ''}</div><span>${status}</span><div class="translation-row-actions">${edit}${retry}</div></div>`;
+  }).join('') || '<div class="translation-task-empty">尚无题目</div>';
+  document.querySelectorAll('[data-edit-translation]').forEach(button => {
+    button.onclick = () => openTranslationEditor(button.dataset.editTranslation);
+  });
+  document.querySelectorAll('[data-retry-translation]').forEach(button => {
+    button.onclick = () => retryProblemTranslation(button.dataset.retryTranslation, true);
+  });
+  if (data?.running) translationAdminTimer = setTimeout(loadLeaderboardTranslations, 3000);
+}
+
+function translationError(error) {
+  if (!error) return '';
+  if (error.includes('AI 改变了题面中的公式、代码或样例结构')) {
+    return '旧版结构保护校验失败，当前版本已修复，请重试该题';
+  }
+  return error;
+}
+
+function translationStatus(status) {
+  return ({NOT_STARTED:'待开始',QUEUED:'排队中',FETCHING:'获取题面',TRANSLATING:'AI 翻译中',READY:'已完成',FAILED:'失败'})[status] || status || '待开始';
+}
+
+async function startProblemTranslations(force) {
+  if (force && !confirm('确定重新获取并翻译全部题目吗？这会覆盖当前译文并再次调用 AI。')) return;
+  const button = force ? $a('#retranslateAllProblems') : $a('#translateAllProblems');
+  button.disabled = true;
+  try {
+    const path = force ? '/api/admin/atcoder-leaderboard/translations/retranslate' : '/api/admin/atcoder-leaderboard/translations';
+    renderLeaderboardTranslations(await request(path, {method: 'POST'}));
+    toast(force ? '已开始重新翻译全部题目' : '赛题翻译任务已启动');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function retryProblemTranslation(taskId, askConfirmation) {
+  if (!taskId) return;
+  const task = leaderboardTranslations?.tasks?.find(item => item.id === taskId);
+  if (askConfirmation && task?.status === 'READY'
+      && !confirm(`确定重新翻译 ${task.label || task.name} 吗？成功后会覆盖当前正式译文。`)) return;
+  try {
+    renderLeaderboardTranslations(await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`, {method: 'POST'}));
+    closeTranslationEditor();
+    toast('该题已重新进入翻译队列');
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function openTranslationEditor(taskId) {
+  try {
+    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`);
+    translationEditorTaskId = taskId;
+    const task = detail.task || {};
+    $a('#translationEditorLabel').textContent = task.label || '?';
+    $a('#translationEditorTitle').textContent = task.name || task.id || '题面译文';
+    $a('#translationEditorStatus').textContent = translationStatus(task.status);
+    $a('#translationEditorTaskError').textContent = translationError(task.error);
+    $a('#translationEditorTaskError').classList.toggle('hidden', !task.error);
+    $a('#translationSourcePreview').innerHTML = detail.sourceHtml || '<p>英文题面尚未获取。</p>';
+    const hasDraft = Boolean(detail.draftHtml);
+    $a('#translationDraftPanel').classList.toggle('empty', !hasDraft);
+    $a('#translationDraftPreview').innerHTML = hasDraft
+      ? detail.draftHtml
+      : '<p>没有可用的 AI 草稿。旧版本产生的失败结果未被保存，需要重新翻译后才能查看。</p>';
+    translationEditorInitialHtml = detail.editorHtml || '';
+    $a('#translationEditable').innerHTML = translationEditorInitialHtml;
+    const editable = Boolean(detail.sourceHtml) && !leaderboardTranslations?.running;
+    $a('#translationEditable').contentEditable = String(editable);
+    $a('#saveTranslationEditor').disabled = !editable;
+    $a('#retranslateEditorTask').disabled = Boolean(leaderboardTranslations?.running);
+    $a('#translationEditorMeta').textContent = detail.translatedAt
+      ? `正式译文更新于 ${date(detail.translatedAt)}`
+      : (hasDraft ? '当前显示 AI 草稿，可修改后保存为正式译文' : '可以基于英文原题人工编辑');
+    $a('#translationEditorError').classList.add('hidden');
+    $a('#translationEditorModal').classList.remove('hidden');
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function closeTranslationEditor() {
+  $a('#translationEditorModal').classList.add('hidden');
+  translationEditorTaskId = '';
+  translationEditorInitialHtml = '';
+}
+
+async function saveTranslationEditor() {
+  if (!translationEditorTaskId) return;
+  const button = $a('#saveTranslationEditor');
+  const errorBox = $a('#translationEditorError');
+  button.disabled = true;
+  errorBox.classList.add('hidden');
+  try {
+    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({translatedHtml: $a('#translationEditable').innerHTML})
+    });
+    translationEditorInitialHtml = detail.editorHtml || detail.translatedHtml || '';
+    $a('#translationEditable').innerHTML = translationEditorInitialHtml;
+    $a('#translationEditorStatus').textContent = translationStatus(detail.task?.status);
+    $a('#translationEditorMeta').textContent = `正式译文更新于 ${date(detail.translatedAt)}`;
+    await loadLeaderboardTranslations();
+    toast('人工译文已保存并发布');
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function saveAtcoderCookie() {
@@ -303,6 +589,7 @@ async function saveLeaderboardConfig(event) {
       })
     });
     renderLeaderboardConfig(config);
+    await loadLeaderboardTranslations();
     toast('比赛已验证并切换，公开榜单可以开始刷新');
   } catch (error) {
     toast(error.message);

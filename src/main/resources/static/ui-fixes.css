@@ -53,3 +53,11 @@
     right: 30px;
   }
 }
+
+.password-card .result-kicker {
+  margin-bottom: 12px;
+}
+
+.password-card .auth-form > p strong {
+  color: var(--ink);
+}

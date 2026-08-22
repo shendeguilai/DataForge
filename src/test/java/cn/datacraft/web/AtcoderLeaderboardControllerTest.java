@@ -28,6 +28,28 @@ class AtcoderLeaderboardControllerTest {
 
     @Test
     void publicCanReadAndRefreshButOnlyAdminCanManageLeaderboard() throws Exception {
+        mvc.perform(get("/atcoder-problems.html").with(anonymous()))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/tools/atcoder-problems").with(anonymous()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configured").value(false));
+        mvc.perform(post("/api/admin/atcoder-leaderboard/translations").with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/admin/atcoder-leaderboard/translations").with(user("student").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/admin/atcoder-leaderboard/translations").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/admin/atcoder-leaderboard/translations/abc430_a").with(anonymous()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/atcoder-leaderboard/translations/abc430_a")
+                        .with(user("student").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/atcoder-leaderboard/translations/abc430_a")
+                        .with(user("student").roles("USER"))
+                        .contentType("application/json")
+                        .content("{\"translatedHtml\":\"<p>中文</p>\"}"))
+                .andExpect(status().isForbidden());
+
         mvc.perform(get("/api/tools/atcoder-leaderboard").with(anonymous()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.configured").value(false))

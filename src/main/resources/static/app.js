@@ -32,12 +32,15 @@ function bindEvents() {
   $('#newTaskButton').onclick = resetTask;
   $('#refreshJobs').onclick = loadRecent;
   $('#historyButton').onclick = () => $('.recent-panel').scrollIntoView({behavior: 'smooth'});
+  $('#changePasswordButton').onclick = showPassword;
   $('#logoutButton').onclick = logout;
   $('#loginPrompt').onclick = () => showAuth('login');
   $('#registerPrompt').onclick = () => showAuth('register');
   $('#closeAuth').onclick = hideAuth;
   $('#loginForm').addEventListener('submit', login);
   $('#registerForm').addEventListener('submit', register);
+  $('#closePassword').onclick = hidePassword;
+  $('#passwordForm').addEventListener('submit', changePassword);
   document.querySelectorAll('[data-auth-tab]').forEach(button => button.onclick = () => switchAuthTab(button.dataset.authTab));
   document.querySelectorAll('[data-copy-target]').forEach(button => button.onclick = () => copyTargetText(button.dataset.copyTarget));
   $('#standardCode').addEventListener('keydown', (event) => {
@@ -101,6 +104,46 @@ function showAuth(tab = 'login', message = '登录或注册后，就可以生成
 function hideAuth() {
   $('#authView').classList.add('hidden');
   $('#authError').classList.add('hidden');
+}
+
+function showPassword() {
+  $('#passwordForm').reset();
+  $('#passwordError').classList.add('hidden');
+  $('#passwordView').classList.remove('hidden');
+  setTimeout(() => $('#currentPassword').focus(), 0);
+}
+
+function hidePassword() {
+  $('#passwordView').classList.add('hidden');
+  $('#passwordError').classList.add('hidden');
+}
+
+async function changePassword(event) {
+  event.preventDefault();
+  const errorBox = $('#passwordError');
+  const newPassword = $('#newPassword').value;
+  if (newPassword !== $('#confirmNewPassword').value) {
+    errorBox.textContent = '两次输入的新密码不一致';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+  const button = $('#passwordForm button[type="submit"]');
+  button.disabled = true;
+  errorBox.classList.add('hidden');
+  try {
+    await api('/api/auth/password', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({currentPassword: $('#currentPassword').value, newPassword})
+    });
+    hidePassword();
+    toast('密码修改成功');
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function logout() {

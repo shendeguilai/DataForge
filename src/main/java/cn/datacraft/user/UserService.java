@@ -59,8 +59,38 @@ public class UserService implements UserDetailsService {
     private void validateCredentials(String username, String password) {
         if (username == null || !username.trim().matches("[A-Za-z0-9_]{3,24}"))
             throw new IllegalArgumentException("用户名需为 3～24 位字母、数字或下划线");
+        validatePassword(password);
+    }
+
+    private void validatePassword(String password) {
         if (password == null || password.length() < 8 || password.length() > 72)
             throw new IllegalArgumentException("密码长度需为 8～72 位");
+    }
+
+    public UserAccount changePassword(String username, String currentPassword, String newPassword) {
+        validatePassword(newPassword);
+        UserAccount user = requireByUsername(username);
+        if (currentPassword == null || !encoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("当前密码不正确");
+        }
+        if (encoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("新密码不能与当前密码相同");
+        }
+        user.setPasswordHash(encoder.encode(newPassword));
+        return users.save(user);
+    }
+
+    public UserAccount resetPassword(Long id, String newPassword, String operatorUsername) {
+        validatePassword(newPassword);
+        UserAccount user = users.findById(id).orElseThrow(() -> new NoSuchElementException("用户不存在"));
+        if (user.getUsername().equalsIgnoreCase(operatorUsername)) {
+            throw new IllegalArgumentException("请通过“修改密码”功能修改自己的密码");
+        }
+        if (encoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("新密码不能与用户当前密码相同");
+        }
+        user.setPasswordHash(encoder.encode(newPassword));
+        return users.save(user);
     }
 
     public UserAccount resetAdminPassword(String username, String password) {

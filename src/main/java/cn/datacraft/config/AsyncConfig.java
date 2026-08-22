@@ -18,4 +18,26 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean(name = "translationCoordinatorExecutor")
+    public Executor translationCoordinatorExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(4);
+        executor.setThreadNamePrefix("atcoder-translation-coordinator-");
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean(name = "translationExecutor")
+    public Executor translationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("atcoder-translation-");
+        executor.initialize();
+        return executor;
+    }
 }

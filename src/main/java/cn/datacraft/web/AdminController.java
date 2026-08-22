@@ -6,8 +6,11 @@ import cn.datacraft.typing.TypingArticleLibrary;
 import cn.datacraft.typing.TypingArticleLibrary.Article;
 import cn.datacraft.user.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,6 +35,13 @@ public class AdminController {
     @PatchMapping("/users/{id}")
     public UserAccount setUserEnabled(@PathVariable Long id, @RequestBody UserStateRequest request) {
         return users.update(id, request.enabled, request.dailyGenerationLimit);
+    }
+
+    @PutMapping("/users/{id}/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetUserPassword(@PathVariable Long id, @Valid @RequestBody ResetPasswordRequest request,
+                                  Authentication authentication) {
+        users.resetPassword(id, request.newPassword, authentication.getName());
     }
 
     @GetMapping("/jobs")
@@ -91,6 +101,7 @@ public class AdminController {
     }
 
     public static class UserStateRequest { public Boolean enabled; public Integer dailyGenerationLimit; }
+    public static class ResetPasswordRequest { @NotBlank public String newPassword; }
     public static class AiConfigRequest { public String baseUrl, model, apiKey; public Integer dailyGenerationLimit; }
     public static class TypingArticleRequest { public String title, category, content; }
 }
