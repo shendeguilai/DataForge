@@ -144,9 +144,24 @@ public class AtcoderProblemTranslationService {
         if (editedHtml != null && editedHtml.length() > 1_000_000) {
             throw new IllegalArgumentException("译文内容过长");
         }
+        return saveManual(rawTaskId, editedHtml, false);
+    }
+
+    public AdminProblemDetailView saveStructuredManualTranslation(String rawTaskId, String manualText) {
+        if (manualText != null && manualText.length() > 1_000_000) {
+            throw new IllegalArgumentException("手动题面内容过长");
+        }
+        return saveManual(rawTaskId, manualText, true);
+    }
+
+    private AdminProblemDetailView saveManual(String rawTaskId, String content, boolean structured) {
         AtcoderLeaderboardConfig config = requireConfig();
         String taskId = normalizeTaskId(rawTaskId);
-        requireTask(config, taskId);
+        List<AtcoderStandings.Task> contestTasks = tasks(config);
+        AtcoderStandings.Task task = contestTasks.stream()
+                .filter(candidate -> candidate.id().equals(taskId))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchElementException("当前比赛中没有这道题"));
         lifecycleLock.lock();
         try {
             if (activeGeneration.get() == generation.get()) {
@@ -154,11 +169,17 @@ public class AtcoderProblemTranslationService {
             }
             AtcoderProblemTranslation entity = translations
                     .findByContestIdAndTaskId(config.getContestId(), taskId)
-                    .orElseThrow(() -> new IllegalStateException("请先获取该题英文题面"));
-            if (entity.getSourceHtml() == null || entity.getSourceHtml().isBlank()) {
-                throw new IllegalStateException("英文题面尚未获取，无法保存人工译文");
+                    .orElseGet(() -> new AtcoderProblemTranslation(
+                            config.getContestId(), task, contestTasks.indexOf(task), clock.instant()));
+            entity.refreshTask(task, contestTasks.indexOf(task));
+            String translated;
+            if (structured) {
+                translated = htmlProcessor.prepareStructuredManualTranslation(content);
+            } else if (entity.getSourceHtml() == null || entity.getSourceHtml().isBlank()) {
+                translated = htmlProcessor.prepareManualTranslation(content);
+            } else {
+                translated = htmlProcessor.prepareEditedTranslation(entity.getSourceHtml(), content);
             }
-            String translated = htmlProcessor.prepareEditedTranslation(entity.getSourceHtml(), editedHtml);
             entity.ready(translated, clock.instant());
             translations.saveAndFlush(entity);
             return adminDetail(taskId);
@@ -375,9 +396,11 @@ public class AtcoderProblemTranslationService {
 
     private String editorHtml(AtcoderProblemTranslation item) {
         String source = item.getSourceHtml();
-        if (source == null || source.isBlank()) return null;
         String candidate = item.getTranslatedHtml() != null
                 ? item.getTranslatedHtml() : item.getDraftHtml();
+        if (source == null || source.isBlank()) {
+            return candidate == null || candidate.isBlank() ? null : htmlProcessor.prepareManualTranslation(candidate);
+        }
         if (candidate == null || candidate.isBlank()) return source;
         try {
             return htmlProcessor.prepareEditedTranslation(source, candidate);

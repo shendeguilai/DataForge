@@ -117,7 +117,17 @@ public class AdminAtcoderLeaderboardController {
         return translations.saveManualTranslation(taskId, request.translatedHtml);
     }
 
+    @PutMapping("/translations/{taskId}/manual")
+    public AdminProblemDetailView importManualTranslation(@PathVariable String taskId,
+                                                          @RequestBody ManualTranslationRequest request) {
+        return translations.saveStructuredManualTranslation(taskId, request.content);
+    }
+
     public static class TranslationEditRequest {
         public String translatedHtml;
+    }
+
+    public static class ManualTranslationRequest {
+        public String content;
     }
 }

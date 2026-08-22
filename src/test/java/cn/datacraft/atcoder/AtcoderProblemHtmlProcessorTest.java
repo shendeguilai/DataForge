@@ -95,4 +95,38 @@ class AtcoderProblemHtmlProcessorTest {
         assertThat(translated).contains("人工题面", "<var>N</var>", "<pre>1\n</pre>")
                 .doesNotContain("错误样例", "onclick", "script", "alert");
     }
+
+    @Test
+    void convertsStructuredManualTextIntoSafeStatementHtml() {
+        String manual = """
+                【题目描述】
+                给定两个整数 A 和 B，输出它们的和。
+
+                【输入格式】
+                输入包含两个整数 A 和 B。
+
+                【输出格式】
+                输出 A+B。
+
+                【样例输入 1】
+                1 2
+
+                【样例输出 1】
+                3
+                """;
+
+        String translated = processor.prepareStructuredManualTranslation(manual);
+
+        assertThat(translated).contains("<h3>题目描述</h3>", "给定两个整数", "<pre>1 2</pre>", "<pre>3</pre>");
+    }
+
+    @Test
+    void rejectsManualTextThatDoesNotUseTheStandardTemplate() {
+        assertThatThrownBy(() -> processor.prepareStructuredManualTranslation("这是没有段落标记的题面"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("【题目描述】");
+        assertThatThrownBy(() -> processor.prepareStructuredManualTranslation("【题目描述】\n\n"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不能为空");
+    }
 }

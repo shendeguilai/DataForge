@@ -154,6 +154,34 @@ class AtcoderProblemTranslationServiceTest {
         assertThat(service.detail("abc430_a").translatedHtml()).isEqualTo(saved.translatedHtml());
     }
 
+    @Test
+    void adminCanPublishStructuredManualStatementWithoutFetchedSource() {
+        String manual = """
+                【题目描述】
+                给定整数 N，输出 N。
+
+                【输入格式】
+                一个整数 N。
+
+                【输出格式】
+                输出 N。
+
+                【样例输入 1】
+                7
+
+                【样例输出 1】
+                7
+                """;
+
+        AdminProblemDetailView saved = service.saveStructuredManualTranslation("abc430_a", manual);
+
+        assertThat(saved.task().status()).isEqualTo("READY");
+        assertThat(saved.sourceHtml()).isNull();
+        assertThat(saved.translatedHtml()).contains("给定整数 N", "<pre>7</pre>");
+        assertThat(saved.editorHtml()).isEqualTo(saved.translatedHtml());
+        assertThat(service.detail("abc430_a").translatedHtml()).isEqualTo(saved.translatedHtml());
+    }
+
     private static AtcoderProblemSourceGateway taskSource() {
         return (contestId, taskId) -> """
                 <div id="task-statement"><span class="lang-ja"><p>日本語</p></span>

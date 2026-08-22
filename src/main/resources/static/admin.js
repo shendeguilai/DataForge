@@ -9,6 +9,23 @@ let leaderboardTranslations = null;
 let translationAdminTimer = null;
 let translationEditorTaskId = '';
 let translationEditorInitialHtml = '';
+const manualTranslationTemplate = `【题目描述】
+请在这里粘贴完整的中文题目描述。
+
+【输入格式】
+请在这里粘贴输入格式。
+
+【输出格式】
+请在这里粘贴输出格式。
+
+【样例输入 1】
+1 2
+
+【样例输出 1】
+3
+
+【说明】
+可选；如果没有说明，请删除本段。`;
 
 async function request(url, options = {}) {
   const r = await fetch(url, options);
@@ -55,6 +72,8 @@ function bind() {
     $a('#translationEditable').innerHTML = translationEditorInitialHtml;
   };
   $a('#saveTranslationEditor').onclick = saveTranslationEditor;
+  $a('#copyManualTranslationTemplate').onclick = fillManualTranslationTemplate;
+  $a('#importManualTranslation').onclick = importManualTranslation;
   $a('#retranslateEditorTask').onclick = () => retryProblemTranslation(translationEditorTaskId, true);
   $a('#closeJobDetail').onclick = () => $a('#jobDetailModal').classList.add('hidden');
   $a('#closeJobDetailX').onclick = () => $a('#jobDetailModal').classList.add('hidden');
@@ -410,8 +429,10 @@ function renderLeaderboardTranslations(data) {
   $a('#translationTaskList').innerHTML = (data?.tasks || []).map(task => {
     const status = translationStatus(task.status);
     const running = ['QUEUED', 'FETCHING', 'TRANSLATING'].includes(task.status) || data?.running;
-    const edit = task.hasSource
+    const edit = task.hasSource || task.hasTranslation
       ? `<button type="button" class="mini-btn" data-edit-translation="${esc(task.id)}">查看/编辑</button>` : '';
+    const manual = running ? ''
+      : `<button type="button" class="mini-btn" data-manual-translation="${esc(task.id)}">手动导入</button>`;
     const retryLabel = task.status === 'READY' ? '重新翻译' : (task.status === 'NOT_STARTED' ? '翻译' : '重试翻译');
     const retry = running ? ''
       : `<button type="button" class="mini-btn" data-retry-translation="${esc(task.id)}">${retryLabel}</button>`;
@@ -419,13 +440,16 @@ function renderLeaderboardTranslations(data) {
     const title = task.hasSource
       ? `<button type="button" class="translation-task-open" data-edit-translation="${esc(task.id)}">${esc(task.name || task.id)}</button>`
       : `<strong>${esc(task.name || task.id)}</strong>`;
-    return `<div class="translation-task-row ${String(task.status || '').toLowerCase()}"><b>${esc(task.label || '?')}</b><div>${title}${error ? `<small>${esc(error)}</small>` : ''}</div><span>${status}</span><div class="translation-row-actions">${edit}${retry}</div></div>`;
+    return `<div class="translation-task-row ${String(task.status || '').toLowerCase()}"><b>${esc(task.label || '?')}</b><div>${title}${error ? `<small>${esc(error)}</small>` : ''}</div><span>${status}</span><div class="translation-row-actions">${edit}${manual}${retry}</div></div>`;
   }).join('') || '<div class="translation-task-empty">尚无题目</div>';
   document.querySelectorAll('[data-edit-translation]').forEach(button => {
     button.onclick = () => openTranslationEditor(button.dataset.editTranslation);
   });
   document.querySelectorAll('[data-retry-translation]').forEach(button => {
     button.onclick = () => retryProblemTranslation(button.dataset.retryTranslation, true);
+  });
+  document.querySelectorAll('[data-manual-translation]').forEach(button => {
+    button.onclick = () => openTranslationEditor(button.dataset.manualTranslation, true);
   });
   if (data?.running) translationAdminTimer = setTimeout(loadLeaderboardTranslations, 3000);
 }
@@ -471,7 +495,7 @@ async function retryProblemTranslation(taskId, askConfirmation) {
   }
 }
 
-async function openTranslationEditor(taskId) {
+async function openTranslationEditor(taskId, showManualImport = false) {
   try {
     const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`);
     translationEditorTaskId = taskId;
@@ -489,17 +513,60 @@ async function openTranslationEditor(taskId) {
       : '<p>没有可用的 AI 草稿。旧版本产生的失败结果未被保存，需要重新翻译后才能查看。</p>';
     translationEditorInitialHtml = detail.editorHtml || '';
     $a('#translationEditable').innerHTML = translationEditorInitialHtml;
-    const editable = Boolean(detail.sourceHtml) && !leaderboardTranslations?.running;
+    const editable = !leaderboardTranslations?.running;
     $a('#translationEditable').contentEditable = String(editable);
     $a('#saveTranslationEditor').disabled = !editable;
     $a('#retranslateEditorTask').disabled = Boolean(leaderboardTranslations?.running);
     $a('#translationEditorMeta').textContent = detail.translatedAt
       ? `正式译文更新于 ${date(detail.translatedAt)}`
-      : (hasDraft ? '当前显示 AI 草稿，可修改后保存为正式译文' : '可以基于英文原题人工编辑');
+      : (hasDraft ? '当前显示 AI 草稿，可修改后保存为正式译文' : (detail.sourceHtml ? '可以基于英文原题人工编辑' : '英文题面未获取，可在上方手动导入中文题面'));
+    $a('#manualTranslationText').value = '';
+    $a('#translationManualImport').open = showManualImport || !detail.sourceHtml;
     $a('#translationEditorError').classList.add('hidden');
     $a('#translationEditorModal').classList.remove('hidden');
   } catch (error) {
     toast(error.message);
+  }
+}
+
+function fillManualTranslationTemplate() {
+  const input = $a('#manualTranslationText');
+  if (input.value.trim() && !confirm('确定用标准模板覆盖当前手动导入内容吗？')) return;
+  input.value = manualTranslationTemplate;
+  input.focus();
+  input.setSelectionRange(0, 0);
+}
+
+async function importManualTranslation() {
+  if (!translationEditorTaskId) return;
+  const input = $a('#manualTranslationText');
+  const button = $a('#importManualTranslation');
+  const errorBox = $a('#translationEditorError');
+  if (!input.value.trim()) {
+    errorBox.textContent = '请先粘贴手动题面';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+  button.disabled = true;
+  errorBox.classList.add('hidden');
+  try {
+    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}/manual`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({content: input.value})
+    });
+    translationEditorInitialHtml = detail.editorHtml || detail.translatedHtml || '';
+    $a('#translationEditable').innerHTML = translationEditorInitialHtml;
+    $a('#translationEditorStatus').textContent = translationStatus(detail.task?.status);
+    $a('#translationEditorMeta').textContent = `手动题面发布于 ${date(detail.translatedAt)}`;
+    input.value = '';
+    await loadLeaderboardTranslations();
+    toast('手动题面已导入并发布');
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
   }
 }
 

@@ -11,6 +11,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
@@ -19,6 +21,9 @@ class AtcoderProblemHtmlProcessor {
     private static final String PROTECTED_TOKEN_PREFIX = "__DATAFORGE_ATCODER_PROTECTED_";
     private static final Pattern PROTECTED_TOKEN = Pattern.compile(
             "__DATAFORGE_ATCODER_PROTECTED_(?:BEGIN|END)_\\d{4}__");
+    private static final Pattern MANUAL_SECTION = Pattern.compile("^\\s*【([^】]+)】\\s*$");
+    private static final Pattern SAMPLE_SECTION = Pattern.compile("样例(?:输入|输出)\\s*\\d+", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> MANUAL_HEADINGS = Set.of("题目描述", "输入格式", "输出格式", "说明", "数据范围");
     private static final Safelist STATEMENT_TAGS = new Safelist()
             .addTags("div", "section", "p", "h2", "h3", "h4", "ul", "ol", "li",
                     "pre", "code", "var", "span", "strong", "em", "b", "i", "br", "hr",
@@ -75,6 +80,74 @@ class AtcoderProblemHtmlProcessor {
         restoreImagesAndLinks(source, target);
         if (target.body().text().isBlank()) throw new IllegalStateException("AI 未返回有效译文");
         return target.body().html();
+    }
+
+    String prepareManualTranslation(String editedHtml) {
+        if (editedHtml == null || editedHtml.isBlank()) throw new IllegalArgumentException("译文不能为空");
+        String translated = cleanFragment(editedHtml);
+        if (fragment(translated).body().text().isBlank()) throw new IllegalArgumentException("译文不能为空");
+        return translated;
+    }
+
+    String prepareStructuredManualTranslation(String rawText) {
+        String text = rawText == null ? "" : rawText.replace("\r\n", "\n").replace('\r', '\n').trim();
+        if (text.isBlank()) throw new IllegalArgumentException("手动题面不能为空");
+        List<ManualSection> sections = parseManualSections(text);
+        if (sections.isEmpty() || sections.stream().noneMatch(section -> "题目描述".equals(section.heading()))) {
+            throw new IllegalArgumentException("手动题面必须包含【题目描述】段落");
+        }
+        Document output = fragment("");
+        for (ManualSection item : sections) {
+            Element section = output.body().appendElement("section");
+            section.appendElement("h3").text(item.heading());
+            if (SAMPLE_SECTION.matcher(item.heading()).matches()) {
+                section.appendElement("pre").text(item.content().strip());
+            } else {
+                appendParagraphs(section, item.content());
+            }
+        }
+        return prepareManualTranslation(output.body().html());
+    }
+
+    private static List<ManualSection> parseManualSections(String text) {
+        List<ManualSection> sections = new ArrayList<>();
+        String heading = null;
+        StringBuilder content = new StringBuilder();
+        for (String line : text.split("\\n", -1)) {
+            Matcher marker = MANUAL_SECTION.matcher(line);
+            if (marker.matches()) {
+                if (heading != null) sections.add(manualSection(heading, content));
+                heading = marker.group(1).trim();
+                if (!MANUAL_HEADINGS.contains(heading) && !SAMPLE_SECTION.matcher(heading).matches()) {
+                    throw new IllegalArgumentException("不支持的手动题面段落：【" + heading + "】");
+                }
+                content.setLength(0);
+            } else if (heading == null) {
+                if (!line.isBlank()) throw new IllegalArgumentException("手动题面必须从【题目描述】开始");
+            } else {
+                if (!content.isEmpty()) content.append('\n');
+                content.append(line);
+            }
+        }
+        if (heading != null) sections.add(manualSection(heading, content));
+        return sections;
+    }
+
+    private static ManualSection manualSection(String heading, StringBuilder content) {
+        String value = content.toString().strip();
+        if (value.isBlank()) throw new IllegalArgumentException("手动题面段落不能为空：【" + heading + "】");
+        return new ManualSection(heading, value);
+    }
+
+    private static void appendParagraphs(Element section, String content) {
+        for (String block : content.split("\\n\\s*\\n")) {
+            Element paragraph = section.appendElement("p");
+            String[] lines = block.strip().split("\\n", -1);
+            for (int index = 0; index < lines.length; index++) {
+                if (index > 0) paragraph.appendElement("br");
+                paragraph.appendText(lines[index]);
+            }
+        }
     }
 
     private static String restoreProtectedFragmentsBestEffort(String output, List<ProtectedFragment> fragments) {
@@ -223,6 +296,8 @@ class AtcoderProblemHtmlProcessor {
     }
 
     record TranslationInput(String html, List<ProtectedFragment> fragments) {}
+
+    private record ManualSection(String heading, String content) {}
 
     private record ProtectedFragment(String beginToken, String endToken, String html, Element element) {}
 }

@@ -30,7 +30,7 @@
       <form id="contestConfigForm" class="leaderboard-config-form">
         <div class="leaderboard-admin-title"><div><span>ACTIVE CONTEST</span><h3>当前比赛</h3></div><span class="cookie-state" id="atcoderCookieState">正在检查</span></div>
         <div class="atcoder-cookie-manager">
-          <label>AtCoder Cookie<input id="atcoderCookieInput" type="password" maxlength="4096" autocomplete="new-password" placeholder="REVEL_SESSION=..."><small>仅发送到本站服务端，验证成功后加密保存，页面不会回显。</small></label>
+          <label>AtCoder Cookie<input id="atcoderCookieInput" type="password" maxlength="4096" autocomplete="new-password" placeholder="REVEL_SESSION=..."><small>仅发送到本站服务端，验证成功后加密保存，页面不会回显。比赛进行中读取题面时，Cookie 对应账号必须已报名当前比赛。</small></label>
           <div class="cookie-manager-footer"><span id="atcoderCookieMeta">尚未配置</span><div><button class="mini-btn" id="saveAtcoderCookie" type="button">验证并保存 Cookie</button><button class="mini-btn hidden" id="clearAtcoderCookie" type="button">清除后台 Cookie</button></div></div>
         </div>
         <label>Contest ID<input id="contestIdInput" maxlength="64" placeholder="abc430" autocomplete="off" required><small>保存时会连接 AtCoder 官方榜单，验证比赛与 Cookie。</small></label>
@@ -84,6 +84,14 @@
       <section><div class="translation-reference-title"><h3>英文原题</h3><span>只读</span></div><div class="translation-reference-content" id="translationSourcePreview"></div></section>
       <section id="translationDraftPanel"><div class="translation-reference-title"><h3>AI 返回草稿</h3><span>失败时也会保留</span></div><div class="translation-reference-content" id="translationDraftPreview"></div></section>
     </div>
+    <details class="translation-manual-import" id="translationManualImport">
+      <summary><span>手动导入中文题面</span><small>AtCoder 题面获取失败时使用</small></summary>
+      <div class="translation-manual-body">
+        <div class="translation-manual-heading"><p>按【题目描述】等标记填写；样例段会自动转换为可复制的代码块。</p><button class="mini-btn" id="copyManualTranslationTemplate" type="button">填入标准模板</button></div>
+        <textarea id="manualTranslationText" rows="16" spellcheck="false" placeholder="【题目描述】&#10;在这里粘贴中文题面……"></textarea>
+        <div class="translation-manual-footer"><span>导入后会立即发布，后续仍可在下方可视化编辑器中修改。</span><button class="mini-btn participant-save" id="importManualTranslation" type="button">导入并发布</button></div>
+      </div>
+    </details>
     <section class="translation-editor-workspace">
       <div class="translation-editor-toolbar"><div><h3>正式中文译文</h3><span>直接点击正文修改；保存时会自动清理 HTML 并恢复公式和样例。</span></div><button class="mini-btn" id="resetTranslationEditor" type="button">恢复打开时内容</button></div>
       <div class="translation-editable" id="translationEditable" contenteditable="true" role="textbox" aria-multiline="true" aria-label="正式中文译文"></div>
