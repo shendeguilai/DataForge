@@ -129,4 +129,116 @@ class AtcoderProblemHtmlProcessorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能为空");
     }
+
+    @Test
+    void acceptsSanitizedPdfTranslationAndAllowsLaterVisualEditing() {
+        String source = processor.preparePdfSource("A", "Warm Up", 1, 2,
+                "Problem Statement\nPrint A.\nSample Input 1\n1\nSample Output 1\n1");
+        String translated = processor.preparePdfTranslation("""
+                ```html
+                <section><h3>题目描述</h3><p>输出 \\(A\\)。</p></section>
+                <section><h3>输入格式</h3><p>输入一个整数。</p></section>
+                <section><h3>输出格式</h3><p>输出答案。</p></section>
+                <section><h3>样例输入 1</h3><pre>1</pre></section>
+                <section><h3>样例输出 1</h3><pre>1</pre></section>
+                ```
+                """, 1);
+
+        assertThat(processor.isPdfSource(source)).isTrue();
+        assertThat(translated).contains("题目描述", "<pre>1</pre>").doesNotContain("```", "script");
+    }
+
+    @Test
+    void rendersMarkdownAndProtectsMathCodeLinksAndSamplesDuringTranslation() {
+        AtcoderContestMarkdownParser.ParsedProblem problem = new AtcoderContestMarkdownParser.ParsedProblem(
+                "A", "Warm Up", "abc430", "abc430_a", """
+                # A - Warm Up
+
+                - Contest: `abc430`
+                - Problem: `abc430_a`
+                - Source: https://atcoder.jp/contests/abc430/tasks/abc430_a
+
+                Score : $100$ points
+
+                ## Problem Statement
+
+                Given $N$, print `Yes`.
+
+                ## Input
+
+                ```text
+                N Q
+                U_1 V_1
+                \\vdots
+                \\text{query}_1
+                ```
+
+                ## Output
+
+                Print the answer.
+
+                ## Sample Input 1
+
+                ```text
+                1
+                ```
+
+                ## Sample Output 1
+
+                ```text
+                Yes
+                ```
+                """, 1);
+        String storedSource = processor.prepareMarkdownSource(problem, "ABC430_ALL.md");
+        String rendered = processor.renderMarkdownProblem(problem.sourceMarkdown());
+        AtcoderProblemHtmlProcessor.TranslationInput input = processor.prepareTranslationInput(rendered);
+        String aiOutput = input.html()
+                .replace("Problem Statement", "题目描述")
+                .replace("Input", "输入格式")
+                .replace("Output", "输出格式")
+                .replace("Sample 输入格式", "样例输入")
+                .replace("Sample 输出格式", "样例输出")
+                .replace("Given", "给定")
+                .replace("Print the answer", "输出答案");
+
+        String translated = processor.prepareMarkdownTranslation(rendered, input, aiOutput, 1);
+
+        assertThat(storedSource).contains("Markdown Imported Source", "# A - Warm Up");
+        assertThat(processor.isMarkdownSource(storedSource)).isTrue();
+        assertThat(processor.markdownSourceFilename(storedSource)).isEqualTo("ABC430_ALL.md");
+        assertThat(processor.markdownSourceText(storedSource)).isEqualTo(problem.sourceMarkdown());
+        assertThat(rendered).doesNotContain("<h1>", "Contest:", "Problem:")
+                .contains("<var>100</var>", "<var>N</var>", "<code>Yes</code>",
+                        "<pre><var>N</var>   <var>Q</var><br><var>U_1</var>   <var>V_1</var>",
+                        "<var>\\vdots</var>", "<var>\\text{query}_1</var>");
+        assertThat(translated).contains("题目描述", "输入格式", "输出格式",
+                "<var>N</var>", "<code>Yes</code>", "<pre><code>1\n</code></pre>");
+    }
+
+    @Test
+    void recoversMarkdownTranslationWhenAiDropsMarkerButKeepsHtmlStructure() {
+        String rendered = """
+                <h2>Problem Statement</h2><p>Given <var>N</var>, print <code>Yes</code>.</p>
+                <h2>Input</h2><pre><var>N</var></pre>
+                <h2>Output</h2><p>Print the answer.</p>
+                <h2>Sample Input 1</h2><pre><code>1
+                </code></pre>
+                <h2>Sample Output 1</h2><pre><code>Yes
+                </code></pre>
+                """;
+        AtcoderProblemHtmlProcessor.TranslationInput input = processor.prepareTranslationInput(rendered);
+        String output = input.html()
+                .replace("Problem Statement", "题目描述")
+                .replace("Sample Input", "样例输入")
+                .replace("Sample Output", "样例输出")
+                .replace("Input", "输入格式")
+                .replace("Output", "输出格式")
+                .replaceFirst("__DATAFORGE_ATCODER_PROTECTED_END_0000__", "");
+
+        String translated = processor.prepareMarkdownTranslation(rendered, input, output, 1);
+
+        assertThat(translated).contains("题目描述", "<var>N</var>", "<code>Yes</code>",
+                "<pre><code>1\n</code></pre>")
+                .doesNotContain("DATAFORGE_ATCODER_PROTECTED");
+    }
 }

@@ -9,6 +9,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -16,7 +18,7 @@ import java.time.Instant;
 @Table(name = "atcoder_problem_translations", uniqueConstraints =
         @UniqueConstraint(name = "uk_atcoder_problem_translation_task", columnNames = {"contest_id", "task_id"}))
 class AtcoderProblemTranslation {
-    enum Status { QUEUED, FETCHING, TRANSLATING, READY, FAILED }
+    enum Status { IMPORTED, QUEUED, FETCHING, TRANSLATING, READY, FAILED }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -47,6 +49,7 @@ class AtcoderProblemTranslation {
     private String draftHtml;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "status", nullable = false, length = 24)
     private Status status;
 
@@ -104,6 +107,17 @@ class AtcoderProblemTranslation {
         translatedHtml = null;
         translatedAt = null;
         status = Status.TRANSLATING;
+        errorMessage = null;
+        updatedAt = now;
+    }
+
+    void imported(String sourceHtml, Instant now) {
+        this.sourceHtml = sourceHtml;
+        sourceFetchedAt = now;
+        translatedHtml = null;
+        draftHtml = null;
+        translatedAt = null;
+        status = Status.IMPORTED;
         errorMessage = null;
         updatedAt = now;
     }

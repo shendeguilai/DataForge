@@ -11,6 +11,7 @@ import cn.datacraft.atcoder.AtcoderProblemDtos.ProblemOverviewView;
 import cn.datacraft.atcoder.AtcoderProblemDtos.AdminProblemDetailView;
 import cn.datacraft.atcoder.AtcoderProblemTranslationService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,9 +19,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -98,6 +102,34 @@ public class AdminAtcoderLeaderboardController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ProblemOverviewView retranslateAll() {
         return translations.startAll(true);
+    }
+
+    @PostMapping(value = "/translations/pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView translatePdf(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择要上传的 PDF 文件");
+        try {
+            return translations.importPdf(file.getOriginalFilename(), file.getBytes());
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("PDF 上传内容读取失败", ex);
+        }
+    }
+
+    @PostMapping(value = "/translations/markdown", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView translateMarkdown(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择要上传的 Markdown 文件");
+        try {
+            return translations.importMarkdown(file.getOriginalFilename(), file.getBytes());
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Markdown 上传内容读取失败", ex);
+        }
+    }
+
+    @PostMapping("/translations/markdown/translate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ProblemOverviewView translateImportedMarkdown() {
+        return translations.translateImportedMarkdownAll();
     }
 
     @PostMapping("/translations/{taskId}")

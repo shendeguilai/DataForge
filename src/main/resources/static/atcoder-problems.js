@@ -127,14 +127,16 @@ function renderStatement() {
 
 function enhanceCodeBlocks(content) {
   content.querySelectorAll('pre').forEach(pre => {
+    const heading = codeBlockHeading(pre);
+    const inputFormat = /^(input|input format|输入|输入格式)$/i.test(heading.trim());
     const wrapper = document.createElement('div');
-    wrapper.className = 'code-sample';
+    wrapper.className = inputFormat ? 'code-sample input-format-panel' : 'code-sample';
     pre.parentNode.insertBefore(wrapper, pre);
     wrapper.appendChild(pre);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-sample';
-    button.textContent = copyLabel(pre);
+    button.textContent = inputFormat ? '复制格式' : copyLabel(heading);
     button.onclick = async () => {
       try {
         await copyText(pre.textContent.replace(/\n$/, ''));
@@ -149,8 +151,21 @@ function enhanceCodeBlocks(content) {
   });
 }
 
-function copyLabel(pre) {
-  const heading = pre.closest('section')?.querySelector('h2,h3,h4')?.textContent || '';
+function codeBlockHeading(pre) {
+  let current = pre;
+  while (current) {
+    let sibling = current.previousElementSibling;
+    while (sibling) {
+      if (/^H[234]$/.test(sibling.tagName)) return sibling.textContent || '';
+      sibling = sibling.previousElementSibling;
+    }
+    current = current.parentElement;
+    if (!current || current.id === 'statementContent') break;
+  }
+  return '';
+}
+
+function copyLabel(heading) {
   if (/input|输入/i.test(heading)) return '复制输入';
   if (/output|输出/i.test(heading)) return '复制输出';
   return '复制';
@@ -198,6 +213,7 @@ function statusMessage(status) {
   return ({
     NOT_STARTED: '管理员尚未开始翻译这道题。',
     QUEUED: '这道题已经进入翻译队列，请稍候。',
+    IMPORTED: '这道题已经从整场 Markdown 导入，正在等待管理员选择翻译。',
     FETCHING: '正在从 AtCoder 获取英文题面…',
     TRANSLATING: 'AI 正在翻译这道题…',
     READY: '正在载入译文…',
@@ -206,7 +222,7 @@ function statusMessage(status) {
 }
 
 function statusText(status) {
-  return ({NOT_STARTED:'待翻译',QUEUED:'排队中',FETCHING:'获取中',TRANSLATING:'翻译中',READY:'已完成',FAILED:'失败'})[status] || '待翻译';
+  return ({NOT_STARTED:'待翻译',IMPORTED:'已导入',QUEUED:'排队中',FETCHING:'获取中',TRANSLATING:'翻译中',READY:'已完成',FAILED:'失败'})[status] || '待翻译';
 }
 
 function formatDate(value) {

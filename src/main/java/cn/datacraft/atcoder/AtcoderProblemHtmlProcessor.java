@@ -1,8 +1,14 @@
 package cn.datacraft.atcoder;
 
+import org.commonmark.Extension;
+import org.commonmark.ext.autolink.AutolinkExtension;
+import org.commonmark.ext.gfm.tables.TablesExtension;
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.TextNode;
 import org.jsoup.safety.Cleaner;
 import org.jsoup.safety.Safelist;
 import org.springframework.stereotype.Component;
@@ -18,6 +24,8 @@ import java.util.regex.Pattern;
 @Component
 class AtcoderProblemHtmlProcessor {
     private static final String BASE_URL = "https://atcoder.jp/";
+    private static final String PDF_SOURCE_HEADING = "PDF Extracted Source";
+    private static final String MARKDOWN_SOURCE_HEADING = "Markdown Imported Source";
     private static final String PROTECTED_TOKEN_PREFIX = "__DATAFORGE_ATCODER_PROTECTED_";
     private static final Pattern PROTECTED_TOKEN = Pattern.compile(
             "__DATAFORGE_ATCODER_PROTECTED_(?:BEGIN|END)_\\d{4}__");
@@ -34,6 +42,18 @@ class AtcoderProblemHtmlProcessor {
             .addProtocols("a", "href", "http", "https")
             .addProtocols("img", "src", "http", "https")
             .preserveRelativeLinks(false);
+    private final Parser markdownParser;
+    private final HtmlRenderer markdownRenderer;
+
+    AtcoderProblemHtmlProcessor() {
+        List<Extension> extensions = List.of(AutolinkExtension.create(), TablesExtension.create());
+        markdownParser = Parser.builder().extensions(extensions).build();
+        markdownRenderer = HtmlRenderer.builder()
+                .extensions(extensions)
+                .escapeHtml(true)
+                .sanitizeUrls(true)
+                .build();
+    }
 
     String extractEnglish(String pageHtml) {
         Document page = Jsoup.parse(pageHtml == null ? "" : pageHtml, BASE_URL);
@@ -87,6 +107,246 @@ class AtcoderProblemHtmlProcessor {
         String translated = cleanFragment(editedHtml);
         if (fragment(translated).body().text().isBlank()) throw new IllegalArgumentException("译文不能为空");
         return translated;
+    }
+
+    String preparePdfSource(String label, String title, int startPage, int endPage, String sourceText) {
+        Document output = fragment("");
+        Element section = output.body().appendElement("section");
+        section.appendElement("h3").text(PDF_SOURCE_HEADING + " / " + label + " - " + title);
+        section.appendElement("p").text(startPage == endPage
+                ? "Source page: " + startPage
+                : "Source pages: " + startPage + "-" + endPage);
+        section.appendElement("pre").text(sourceText == null ? "" : sourceText.strip());
+        return prepareManualTranslation(output.body().html());
+    }
+
+    String preparePdfDraft(String translatedOutput) {
+        String draft = cleanFragment(stripMarkdownFence(translatedOutput));
+        if (fragment(draft).body().text().isBlank()) return null;
+        return draft;
+    }
+
+    String preparePdfTranslation(String translatedOutput, int samplePairCount) {
+        String translated = preparePdfDraft(translatedOutput);
+        if (translated == null) throw new IllegalStateException("AI 未返回有效的 PDF 译文");
+        Document document = fragment(translated);
+        List<String> headings = document.select("h2,h3,h4").eachText();
+        if (headings.stream().noneMatch(heading -> heading.contains("题目描述"))) {
+            throw new IllegalStateException("AI 返回的 PDF 译文缺少“题目描述”段落");
+        }
+        if (headings.stream().noneMatch(heading -> heading.contains("输入"))
+                || headings.stream().noneMatch(heading -> heading.contains("输出"))) {
+            throw new IllegalStateException("AI 返回的 PDF 译文缺少输入或输出段落");
+        }
+        int requiredSamples = Math.max(0, samplePairCount * 2);
+        if (document.select("pre").size() < requiredSamples) {
+            throw new IllegalStateException("AI 未完整保留 PDF 中的样例输入输出，请重试该题");
+        }
+        return translated;
+    }
+
+    boolean isPdfSource(String sourceHtml) {
+        if (sourceHtml == null || sourceHtml.isBlank()) return false;
+        Element heading = fragment(sourceHtml).selectFirst("h2,h3,h4");
+        return heading != null && heading.text().startsWith(PDF_SOURCE_HEADING + " /");
+    }
+
+    String prepareMarkdownSource(AtcoderContestMarkdownParser.ParsedProblem problem, String filename) {
+        Document output = fragment("");
+        Element section = output.body().appendElement("section");
+        section.appendElement("h3").text(MARKDOWN_SOURCE_HEADING + " / "
+                + problem.label() + " - " + problem.title());
+        section.appendElement("p").text("Imported file: " + safeImportedFilename(filename));
+        section.appendElement("p").text("Contest: " + problem.contestId()
+                + " / Problem: " + problem.problemId());
+        section.appendElement("pre").text(problem.sourceMarkdown());
+        return prepareManualTranslation(output.body().html());
+    }
+
+    String renderMarkdownProblem(String sourceMarkdown) {
+        if (sourceMarkdown == null || sourceMarkdown.isBlank()) {
+            throw new IllegalArgumentException("Markdown 题面不能为空");
+        }
+        String rendered = markdownRenderer.render(markdownParser.parse(sourceMarkdown));
+        Document document = fragment(rendered);
+        Element title = document.selectFirst("body > h1");
+        if (title != null) title.remove();
+        Element metadata = document.selectFirst("body > ul");
+        if (metadata != null && metadata.text().contains("Contest:")
+                && metadata.text().contains("Problem:")) {
+            metadata.remove();
+        }
+        convertInputFormatBlocks(document);
+        wrapMarkdownMath(document);
+        String cleaned = cleanFragment(document.body().html());
+        if (fragment(cleaned).body().text().isBlank()) {
+            throw new IllegalArgumentException("Markdown 没有可翻译的题面内容");
+        }
+        return cleaned;
+    }
+
+    String prepareMarkdownTranslation(String renderedSourceHtml, TranslationInput input,
+                                      String translatedOutput, int samplePairCount) {
+        String translated;
+        try {
+            translated = prepareTranslation(renderedSourceHtml, input, translatedOutput);
+        } catch (IllegalStateException markerError) {
+            try {
+                String withoutMarkers = PROTECTED_TOKEN.matcher(
+                        stripMarkdownFence(translatedOutput)).replaceAll("");
+                translated = prepareEditedTranslation(renderedSourceHtml, withoutMarkers);
+            } catch (RuntimeException structureError) {
+                throw new IllegalStateException(markerError.getMessage()
+                        + "；HTML 结构恢复也失败：" + structureError.getMessage(), structureError);
+            }
+        }
+        Document document = fragment(translated);
+        List<String> headings = document.select("h2,h3,h4").eachText();
+        if (headings.stream().noneMatch(heading -> heading.contains("题目描述"))) {
+            throw new IllegalStateException("AI 返回的 Markdown 译文缺少“题目描述”段落");
+        }
+        if (headings.stream().noneMatch(heading -> heading.contains("输入"))
+                || headings.stream().noneMatch(heading -> heading.contains("输出"))) {
+            throw new IllegalStateException("AI 返回的 Markdown 译文缺少输入或输出段落");
+        }
+        int requiredSamples = Math.max(0, samplePairCount * 2);
+        if (document.select("pre").size() < requiredSamples) {
+            throw new IllegalStateException("AI 未完整保留 Markdown 中的样例输入输出，请重试该题");
+        }
+        return translated;
+    }
+
+    String markdownSourceText(String sourceHtml) {
+        if (!isMarkdownSource(sourceHtml)) throw new IllegalArgumentException("当前题目不是 Markdown 导入来源");
+        Element source = fragment(sourceHtml).selectFirst("pre");
+        if (source == null || source.wholeText().isBlank()) {
+            throw new IllegalStateException("Markdown 原文不存在，无法重新翻译");
+        }
+        return source.wholeText();
+    }
+
+    String markdownSourceFilename(String sourceHtml) {
+        if (!isMarkdownSource(sourceHtml)) return null;
+        for (Element paragraph : fragment(sourceHtml).select("p")) {
+            String text = paragraph.text();
+            if (text.startsWith("Imported file: ")) return text.substring("Imported file: ".length()).strip();
+        }
+        return null;
+    }
+
+    boolean isMarkdownSource(String sourceHtml) {
+        if (sourceHtml == null || sourceHtml.isBlank()) return false;
+        Element heading = fragment(sourceHtml).selectFirst("h2,h3,h4");
+        return heading != null && heading.text().startsWith(MARKDOWN_SOURCE_HEADING + " /");
+    }
+
+    boolean isImportedSource(String sourceHtml) {
+        return isPdfSource(sourceHtml) || isMarkdownSource(sourceHtml);
+    }
+
+    private static String safeImportedFilename(String filename) {
+        String value = filename == null ? "contest.md" : filename.replace('\\', '/').strip();
+        int slash = value.lastIndexOf('/');
+        if (slash >= 0) value = value.substring(slash + 1);
+        return value.isBlank() ? "contest.md" : value;
+    }
+
+    private static void convertInputFormatBlocks(Document document) {
+        for (Element heading : document.select("h2,h3")) {
+            String title = heading.text().strip().toLowerCase(Locale.ROOT);
+            if (!title.equals("input") && !title.equals("input format")) continue;
+            Element current = heading.nextElementSibling();
+            while (current != null && !current.tagName().matches("h1|h2")) {
+                Element next = current.nextElementSibling();
+                if (current.tagName().equals("pre")) renderInputFormatBlock(current);
+                current = next;
+            }
+        }
+    }
+
+    private static void renderInputFormatBlock(Element block) {
+        String source = block.wholeText().replace("\r\n", "\n").replace('\r', '\n');
+        block.empty();
+        String[] lines = source.split("\\n", -1);
+        int lineCount = lines.length;
+        if (lineCount > 0 && lines[lineCount - 1].isEmpty()) lineCount--;
+        for (int lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+            List<String> tokens = splitInputFormatTokens(lines[lineIndex]);
+            for (int tokenIndex = 0; tokenIndex < tokens.size(); tokenIndex++) {
+                if (tokenIndex > 0) block.appendChild(new TextNode("   "));
+                block.appendElement("var").text(tokens.get(tokenIndex));
+            }
+            if (lineIndex + 1 < lineCount) block.appendElement("br");
+        }
+    }
+
+    private static List<String> splitInputFormatTokens(String line) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder token = new StringBuilder();
+        int braceDepth = 0;
+        for (int index = 0; index < line.length(); index++) {
+            char value = line.charAt(index);
+            if (value == '{' && (index == 0 || line.charAt(index - 1) != '\\')) braceDepth++;
+            if (value == '}' && braceDepth > 0 && (index == 0 || line.charAt(index - 1) != '\\')) braceDepth--;
+            boolean separator = Character.isWhitespace(value) && braceDepth == 0
+                    && (index == 0 || line.charAt(index - 1) != '\\');
+            if (separator) {
+                if (!token.isEmpty()) {
+                    tokens.add(token.toString());
+                    token.setLength(0);
+                }
+            } else {
+                token.append(value);
+            }
+        }
+        if (!token.isEmpty()) tokens.add(token.toString());
+        return tokens;
+    }
+
+    private static void wrapMarkdownMath(Document document) {
+        for (Element element : new ArrayList<>(document.body().getAllElements())) {
+            if (element.is("pre,code,var")) continue;
+            for (TextNode node : new ArrayList<>(element.textNodes())) wrapMarkdownMath(node);
+        }
+    }
+
+    private static void wrapMarkdownMath(TextNode node) {
+        String value = node.getWholeText();
+        int cursor = 0;
+        boolean changed = false;
+        List<org.jsoup.nodes.Node> replacements = new ArrayList<>();
+        while (cursor < value.length()) {
+            int start = nextUnescapedDollar(value, cursor);
+            if (start < 0) break;
+            int delimiterLength = start + 1 < value.length() && value.charAt(start + 1) == '$' ? 2 : 1;
+            int end = findClosingDollar(value, start + delimiterLength, delimiterLength);
+            if (end < 0) break;
+            if (start > cursor) replacements.add(new TextNode(value.substring(cursor, start)));
+            replacements.add(new Element("var").text(value.substring(start + delimiterLength, end)));
+            cursor = end + delimiterLength;
+            changed = true;
+        }
+        if (!changed) return;
+        if (cursor < value.length()) replacements.add(new TextNode(value.substring(cursor)));
+        for (org.jsoup.nodes.Node replacement : replacements) node.before(replacement);
+        node.remove();
+    }
+
+    private static int nextUnescapedDollar(String value, int fromIndex) {
+        for (int index = fromIndex; index < value.length(); index++) {
+            if (value.charAt(index) == '$' && (index == 0 || value.charAt(index - 1) != '\\')) return index;
+        }
+        return -1;
+    }
+
+    private static int findClosingDollar(String value, int fromIndex, int delimiterLength) {
+        for (int index = fromIndex; index <= value.length() - delimiterLength; index++) {
+            if (value.charAt(index) != '$' || (index > 0 && value.charAt(index - 1) == '\\')) continue;
+            if (delimiterLength == 1 && index + 1 < value.length() && value.charAt(index + 1) == '$') continue;
+            if (delimiterLength == 2 && value.charAt(index + 1) != '$') continue;
+            return index;
+        }
+        return -1;
     }
 
     String prepareStructuredManualTranslation(String rawText) {
@@ -185,20 +445,40 @@ class AtcoderProblemHtmlProcessor {
 
     private static String restoreProtectedFragments(String output, List<ProtectedFragment> fragments) {
         String restored = output;
-        for (ProtectedFragment fragment : fragments) {
-            if (occurrences(restored, fragment.beginToken()) != 1
-                    || occurrences(restored, fragment.endToken()) != 1) {
-                throw new IllegalStateException("AI 未完整保留公式、代码或样例占位符，请重试该题");
+        for (int index = 0; index < fragments.size(); index++) {
+            ProtectedFragment fragment = fragments.get(index);
+            int beginCount = occurrences(restored, fragment.beginToken());
+            int endCount = occurrences(restored, fragment.endToken());
+            if (beginCount != 1 || endCount != 1) {
+                String issue = beginCount == 0 || endCount == 0 ? "标记被遗漏" : "标记被重复";
+                throw new IllegalStateException("AI 未完整保留公式、代码或样例占位符：第 "
+                        + (index + 1) + " 个" + protectedDescription(fragment.element())
+                        + issue + "（开始标记 " + beginCount + " 次，结束标记 " + endCount + " 次），请重试该题");
             }
             int begin = restored.indexOf(fragment.beginToken());
             int end = restored.indexOf(fragment.endToken(), begin + fragment.beginToken().length());
             if (end < begin) {
-                throw new IllegalStateException("AI 改变了公式、代码或样例占位符顺序，请重试该题");
+                throw new IllegalStateException("AI 改变了公式、代码或样例占位符顺序：第 "
+                        + (index + 1) + " 个" + protectedDescription(fragment.element()) + "顺序错误，请重试该题");
             }
             restored = restored.substring(0, begin) + fragment.html()
                     + restored.substring(end + fragment.endToken().length());
         }
         return restored;
+    }
+
+    private static String protectedDescription(Element element) {
+        String type = switch (element.tagName()) {
+            case "pre" -> "输入格式或样例代码块";
+            case "var" -> "公式";
+            case "code" -> "行内代码";
+            case "a" -> "链接";
+            case "img" -> "图片";
+            default -> "受保护内容";
+        };
+        String preview = element.text().replaceAll("\\s+", " ").strip();
+        if (preview.length() > 36) preview = preview.substring(0, 36) + "…";
+        return preview.isBlank() ? type + "" : type + "“" + preview + "”";
     }
 
     private static int occurrences(String source, String target) {

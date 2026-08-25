@@ -66,6 +66,13 @@ function bind() {
   $a('#saveParticipantBatch').onclick = saveParticipantBatch;
   $a('#translateAllProblems').onclick = () => startProblemTranslations(false);
   $a('#retranslateAllProblems').onclick = () => startProblemTranslations(true);
+  $a('#chooseTranslationMarkdown').onclick = () => $a('#translationMarkdownFile').click();
+  $a('#translationMarkdownFile').onchange = updateTranslationMarkdownSelection;
+  $a('#uploadTranslationMarkdown').onclick = uploadTranslationMarkdown;
+  $a('#translateImportedMarkdownAll').onclick = translateImportedMarkdownAll;
+  $a('#chooseTranslationPdf').onclick = () => $a('#translationPdfFile').click();
+  $a('#translationPdfFile').onchange = updateTranslationPdfSelection;
+  $a('#uploadTranslationPdf').onclick = uploadTranslationPdf;
   $a('#closeTranslationEditor').onclick = closeTranslationEditor;
   $a('#closeTranslationEditorX').onclick = closeTranslationEditor;
   $a('#resetTranslationEditor').onclick = () => {
@@ -413,6 +420,7 @@ function renderLeaderboardTranslations(data) {
   const labels = {
     NOT_CONFIGURED: '请先配置并保存当前比赛。',
     NOT_STARTED: '题目列表已准备，可以开始获取并翻译英文题面。',
+    IMPORTED: '整场 Markdown 已上传并校验，可逐题翻译或翻译全部未完成题目。',
     RUNNING: `正在后台处理题面，已完成 ${ready} / ${total} 道。`,
     READY: '全部题面翻译完成，公开阅读页已经可以使用。',
     PARTIAL: `已有 ${ready} 道可阅读，失败题目可以单独重试。`,
@@ -426,6 +434,15 @@ function renderLeaderboardTranslations(data) {
   start.textContent = data?.running ? '正在翻译…' : (ready ? '继续翻译未完成题目' : '一键获取并翻译');
   retranslate.classList.toggle('hidden', !ready);
   retranslate.disabled = Boolean(data?.running) || !aiConfigured;
+  const receipt = $a('#translationMarkdownReceipt');
+  if (data?.importedBundle?.type === 'MARKDOWN') {
+    receipt.textContent = `已上传：${data.importedBundle.filename} · 已识别 ${data.importedBundle.problemCount} / ${total} 题`;
+    receipt.classList.add('uploaded');
+  } else {
+    receipt.textContent = '尚未上传整场 Markdown';
+    receipt.classList.remove('uploaded');
+  }
+  updateTranslationImportButtons();
   $a('#translationTaskList').innerHTML = (data?.tasks || []).map(task => {
     const status = translationStatus(task.status);
     const running = ['QUEUED', 'FETCHING', 'TRANSLATING'].includes(task.status) || data?.running;
@@ -433,7 +450,8 @@ function renderLeaderboardTranslations(data) {
       ? `<button type="button" class="mini-btn" data-edit-translation="${esc(task.id)}">查看/编辑</button>` : '';
     const manual = running ? ''
       : `<button type="button" class="mini-btn" data-manual-translation="${esc(task.id)}">手动导入</button>`;
-    const retryLabel = task.status === 'READY' ? '重新翻译' : (task.status === 'NOT_STARTED' ? '翻译' : '重试翻译');
+    const retryLabel = task.status === 'READY' ? '重新翻译'
+      : (['NOT_STARTED', 'IMPORTED'].includes(task.status) ? '翻译' : '重试翻译');
     const retry = running ? ''
       : `<button type="button" class="mini-btn" data-retry-translation="${esc(task.id)}">${retryLabel}</button>`;
     const error = translationError(task.error);
@@ -463,7 +481,7 @@ function translationError(error) {
 }
 
 function translationStatus(status) {
-  return ({NOT_STARTED:'待开始',QUEUED:'排队中',FETCHING:'获取题面',TRANSLATING:'AI 翻译中',READY:'已完成',FAILED:'失败'})[status] || status || '待开始';
+  return ({NOT_STARTED:'待开始',IMPORTED:'已上传',QUEUED:'排队中',FETCHING:'获取题面',TRANSLATING:'AI 翻译中',READY:'已完成',FAILED:'失败'})[status] || status || '待开始';
 }
 
 async function startProblemTranslations(force) {
@@ -478,6 +496,119 @@ async function startProblemTranslations(force) {
     toast(error.message);
   } finally {
     button.disabled = false;
+  }
+}
+
+function updateTranslationPdfSelection() {
+  const file = $a('#translationPdfFile').files?.[0];
+  const label = $a('#translationPdfName');
+  if (!file) {
+    label.textContent = '尚未选择文件';
+  } else {
+    label.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  }
+  updateTranslationImportButtons();
+}
+
+function updateTranslationMarkdownSelection() {
+  const file = $a('#translationMarkdownFile').files?.[0];
+  const label = $a('#translationMarkdownName');
+  label.textContent = file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KB` : '尚未选择文件';
+  updateTranslationImportButtons();
+}
+
+function updateTranslationImportButtons() {
+  const aiConfigured = Boolean(adminSettings?.apiKeyConfigured && adminSettings?.baseUrl && adminSettings?.model);
+  const unavailable = !leaderboardTranslations?.configured
+    || Boolean(leaderboardTranslations?.running);
+  const markdownButton = $a('#uploadTranslationMarkdown');
+  const pdfButton = $a('#uploadTranslationPdf');
+  if (markdownButton) markdownButton.disabled = unavailable || !$a('#translationMarkdownFile').files?.[0];
+  if (pdfButton) pdfButton.disabled = unavailable || !aiConfigured || !$a('#translationPdfFile').files?.[0];
+  const importedAll = $a('#translateImportedMarkdownAll');
+  const pendingImported = (leaderboardTranslations?.tasks || [])
+    .filter(task => task.sourceType === 'MARKDOWN' && ['IMPORTED', 'FAILED'].includes(task.status)).length;
+  if (importedAll) {
+    importedAll.disabled = unavailable || !aiConfigured
+      || leaderboardTranslations?.importedBundle?.type !== 'MARKDOWN' || !pendingImported;
+    importedAll.textContent = pendingImported
+      ? `翻译全部未完成题目（${pendingImported} 道）` : '翻译全部未完成题目';
+  }
+}
+
+async function uploadTranslationMarkdown() {
+  const input = $a('#translationMarkdownFile');
+  const file = input.files?.[0];
+  if (!file) { toast('请先选择整场题面 Markdown'); return; }
+  const name = file.name.toLowerCase();
+  if (!name.endsWith('.md') && !name.endsWith('.markdown')) { toast('请选择 .md 或 .markdown 文件'); return; }
+  if (file.size > 5 * 1024 * 1024) { toast('Markdown 文件不能超过 5MB'); return; }
+  if ((leaderboardTranslations?.readyCount || 0) > 0
+      && !confirm('上传新的 Markdown 会覆盖当前比赛已有译文，确定继续吗？')) return;
+  const button = $a('#uploadTranslationMarkdown');
+  button.disabled = true;
+  button.textContent = '正在校验…';
+  try {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/markdown', {
+      method: 'POST', body
+    }));
+    input.value = '';
+    updateTranslationMarkdownSelection();
+    toast('Markdown 已上传并校验，可选择逐题或全部翻译');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.textContent = '上传并校验';
+    updateTranslationImportButtons();
+  }
+}
+
+async function translateImportedMarkdownAll() {
+  const pending = (leaderboardTranslations?.tasks || [])
+    .filter(task => task.sourceType === 'MARKDOWN' && ['IMPORTED', 'FAILED'].includes(task.status)).length;
+  if (!pending) { toast('没有待翻译的 Markdown 题目'); return; }
+  if (!confirm(`确定调用 AI 翻译全部 ${pending} 道未完成题目吗？`)) return;
+  const button = $a('#translateImportedMarkdownAll');
+  button.disabled = true;
+  try {
+    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/markdown/translate', {
+      method: 'POST'
+    }));
+    toast(`已开始翻译 ${pending} 道 Markdown 题目`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    updateTranslationImportButtons();
+  }
+}
+
+async function uploadTranslationPdf() {
+  const input = $a('#translationPdfFile');
+  const file = input.files?.[0];
+  if (!file) { toast('请先选择比赛题面 PDF'); return; }
+  if (!file.name.toLowerCase().endsWith('.pdf')) { toast('请选择 PDF 文件'); return; }
+  if (file.size > 25 * 1024 * 1024) { toast('PDF 文件不能超过 25MB'); return; }
+  if ((leaderboardTranslations?.readyCount || 0) > 0
+      && !confirm('PDF 翻译会覆盖当前比赛已有译文，确定继续吗？')) return;
+  const button = $a('#uploadTranslationPdf');
+  button.disabled = true;
+  button.textContent = '正在识别…';
+  try {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/pdf', {
+      method: 'POST', body
+    }));
+    input.value = '';
+    updateTranslationPdfSelection();
+    toast('PDF 已识别，正在后台逐题翻译');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.textContent = '识别并翻译';
+    updateTranslationImportButtons();
   }
 }
 

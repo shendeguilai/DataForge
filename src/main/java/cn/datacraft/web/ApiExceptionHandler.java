@@ -5,6 +5,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.*;
 
@@ -18,6 +19,10 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> unauthorized(Exception ex) { return error(HttpStatus.UNAUTHORIZED, "用户名或密码错误"); }
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, String>> forbidden(Exception ex) { return error(HttpStatus.FORBIDDEN, ex.getMessage()); }
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, String>> uploadTooLarge(Exception ex) {
+        return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 25MB");
+    }
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Collections.singletonMap("error", message));
     }

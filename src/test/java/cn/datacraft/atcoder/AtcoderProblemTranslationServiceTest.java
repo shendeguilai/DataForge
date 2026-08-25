@@ -4,10 +4,18 @@ import cn.datacraft.atcoder.AtcoderProblemDtos.ProblemDetailView;
 import cn.datacraft.atcoder.AtcoderProblemDtos.AdminProblemDetailView;
 import cn.datacraft.atcoder.AtcoderProblemDtos.ProblemOverviewView;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -182,6 +190,130 @@ class AtcoderProblemTranslationServiceTest {
         assertThat(service.detail("abc430_a").translatedHtml()).isEqualTo(saved.translatedHtml());
     }
 
+    @Test
+    void importsMatchingContestPdfAndPublishesAiHtmlWithoutAtcoderStructureComparison() throws Exception {
+        AtcoderProblemTranslator pdfTranslator = new AtcoderProblemTranslator() {
+            @Override
+            public String translateToChinese(String sourceHtml) {
+                return sourceHtml;
+            }
+
+            @Override
+            public String translatePdfTextToChinese(String label, String title, String sourceText) {
+                return """
+                        <section><h3>题目描述</h3><p>这是 PDF 题目 %s。</p></section>
+                        <section><h3>输入格式</h3><p>输入内容。</p></section>
+                        <section><h3>输出格式</h3><p>输出答案。</p></section>
+                        <section><h3>样例输入 1</h3><pre>1</pre></section>
+                        <section><h3>样例输出 1</h3><pre>1</pre></section>
+                        """.formatted(label);
+            }
+        };
+        Executor direct = Runnable::run;
+        service = new AtcoderProblemTranslationService(
+                configs, translations, taskSource(), pdfTranslator, new AtcoderProblemHtmlProcessor(),
+                new ObjectMapper().findAndRegisterModules(), direct, direct, Clock.systemUTC());
+        byte[] pdf = contestPdf(
+                "A - Warm Up\nProblem Statement\nYou are given an integer A. Print A as the answer.\nConstraints\nA is an integer.\nInput\nA\nOutput\nA\nSample Input 1\n1\nSample Output 1\n1",
+                "B - Strings\nProblem Statement\nYou are given a string B. Print B as the answer.\nConstraints\nB is a string.\nInput\nB\nOutput\nB\nSample Input 1\n1\nSample Output 1\n1"
+        );
+
+        ProblemOverviewView result = service.importPdf("abc430.pdf", pdf);
+
+        assertThat(result.status()).isEqualTo("READY");
+        assertThat(result.readyCount()).isEqualTo(2);
+        assertThat(service.adminDetail("abc430_a").sourceHtml()).contains("PDF Extracted Source", "Print A");
+        assertThat(service.detail("abc430_a").translatedHtml()).contains("这是 PDF 题目 A", "<pre>1</pre>");
+        AdminProblemDetailView edited = service.saveManualTranslation("abc430_a",
+                service.adminDetail("abc430_a").editorHtml().replace("这是 PDF 题目", "人工校订 PDF 题目"));
+        assertThat(edited.translatedHtml()).contains("人工校订 PDF 题目");
+    }
+
+    @Test
+    void importsMatchingContestMarkdownThenTranslatesOneOrAllFromStoredSource() {
+        AtcoderProblemTranslator markdownTranslator = new AtcoderProblemTranslator() {
+            @Override
+            public String translateToChinese(String sourceHtml) {
+                return sourceHtml;
+            }
+
+            @Override
+            public String translateMarkdownToChinese(String label, String title, String renderedSourceHtml) {
+                return renderedSourceHtml
+                        .replace("Problem Statement", "题目描述")
+                        .replace("Sample Input", "样例输入")
+                        .replace("Sample Output", "样例输出")
+                        .replace("Input", "输入格式")
+                        .replace("Output", "输出格式")
+                        .replace("Given", "给定")
+                        .replace("Print the answer", "输出答案");
+            }
+        };
+        Executor direct = Runnable::run;
+        service = new AtcoderProblemTranslationService(
+                configs, translations, taskSource(), markdownTranslator, new AtcoderProblemHtmlProcessor(),
+                new ObjectMapper().findAndRegisterModules(), direct, direct, Clock.systemUTC());
+        String markdown = markdownProblem("A", "Warm Up", "abc430_a", "N", "1")
+                + "\n\n" + markdownProblem("B", "Strings", "abc430_b", "S", "abc");
+
+        ProblemOverviewView result = service.importMarkdown(
+                "ABC430_ALL.md", markdown.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(result.status()).isEqualTo("IMPORTED");
+        assertThat(result.readyCount()).isZero();
+        assertThat(result.importedBundle().filename()).isEqualTo("ABC430_ALL.md");
+        assertThat(result.importedBundle().problemCount()).isEqualTo(2);
+        assertThat(result.tasks()).extracting(task -> task.status()).containsOnly("IMPORTED");
+        assertThat(service.adminDetail("abc430_a").sourceHtml())
+                .contains("Markdown Imported Source", "Imported file: ABC430_ALL.md", "Problem: `abc430_a`");
+        assertThat(service.detail("abc430_a").translatedHtml()).isNull();
+
+        ProblemOverviewView retried = service.retryTask("abc430_a");
+
+        assertThat(retried.status()).isEqualTo("PARTIAL");
+        assertThat(retried.readyCount()).isEqualTo(1);
+        assertThat(service.adminDetail("abc430_a").sourceHtml()).contains("Markdown Imported Source");
+        assertThat(service.detail("abc430_a").translatedHtml())
+                .contains("题目描述", "<var>N</var>", "<pre><code>1\n</code></pre>");
+
+        ProblemOverviewView all = service.translateImportedMarkdownAll();
+
+        assertThat(all.status()).isEqualTo("READY");
+        assertThat(all.readyCount()).isEqualTo(2);
+        AdminProblemDetailView edited = service.saveManualTranslation("abc430_a",
+                service.adminDetail("abc430_a").editorHtml().replace("给定", "人工校订：给定"));
+        assertThat(edited.translatedHtml()).contains("人工校订：给定");
+    }
+
+    @Test
+    void markdownUploadDoesNotRequireAiUntilTranslationStarts() {
+        AtcoderProblemTranslator unavailable = new AtcoderProblemTranslator() {
+            @Override
+            public void requireConfigured() {
+                throw new IllegalStateException("AI 接口尚未配置");
+            }
+
+            @Override
+            public String translateToChinese(String sourceHtml) {
+                throw new AssertionError("upload must not call AI");
+            }
+        };
+        Executor direct = Runnable::run;
+        service = new AtcoderProblemTranslationService(
+                configs, translations, taskSource(), unavailable, new AtcoderProblemHtmlProcessor(),
+                new ObjectMapper().findAndRegisterModules(), direct, direct, Clock.systemUTC());
+        String markdown = markdownProblem("A", "Warm Up", "abc430_a", "N", "1")
+                + "\n\n" + markdownProblem("B", "Strings", "abc430_b", "S", "abc");
+
+        ProblemOverviewView imported = service.importMarkdown(
+                "ABC430_ALL.md", markdown.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(imported.status()).isEqualTo("IMPORTED");
+        assertThatThrownBy(() -> service.retryTask("abc430_a"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("AI 接口尚未配置");
+        assertThat(service.adminOverview().status()).isEqualTo("IMPORTED");
+    }
+
     private static AtcoderProblemSourceGateway taskSource() {
         return (contestId, taskId) -> """
                 <div id="task-statement"><span class="lang-ja"><p>日本語</p></span>
@@ -189,5 +321,70 @@ class AtcoderProblemTranslationServiceTest {
                 <h3>Sample Input 1</h3><pre>1
                 </pre></span></div>
                 """;
+    }
+
+    private static String markdownProblem(String label, String title, String problemId,
+                                          String variable, String sample) {
+        return """
+                # %s - %s
+
+                - Contest: `abc430`
+                - Problem: `%s`
+                - Source: https://atcoder.jp/contests/abc430/tasks/%s
+
+                Score : $100$ points
+
+                ## Problem Statement
+
+                Given $%s$, print the answer without changing any protected content.
+
+                ## Constraints
+
+                - $%s$ is valid input data.
+
+                ## Input
+
+                ```text
+                %s
+                ```
+
+                ## Output
+
+                Print the answer.
+
+                ## Sample Input 1
+
+                ```text
+                %s
+                ```
+
+                ## Sample Output 1
+
+                ```text
+                %s
+                ```
+                """.formatted(label, title, problemId, problemId, variable, variable, variable, sample, sample);
+    }
+
+    private static byte[] contestPdf(String... pages) throws IOException {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            for (String value : pages) {
+                PDPage page = new PDPage();
+                document.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                    content.beginText();
+                    content.setFont(font, 11);
+                    content.newLineAtOffset(48, 750);
+                    for (String line : value.split("\\n", -1)) {
+                        content.showText(line);
+                        content.newLineAtOffset(0, -16);
+                    }
+                    content.endText();
+                }
+            }
+            document.save(output);
+            return output.toByteArray();
+        }
     }
 }
