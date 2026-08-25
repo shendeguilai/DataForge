@@ -144,7 +144,9 @@ public class AtcoderLeaderboardService {
         String officialTitle = normalizeOfficialTitle(metadata.title(), contestId);
         String displayTitle = requestedTitle.isBlank() ? officialTitle : requestedTitle;
         Instant now = clock.instant();
-        String tasksJson = writeTasks(standings.tasks());
+        List<AtcoderStandings.Task> savedTasks = tasksWithConfiguredNameFallback(
+                contestId, standings.tasks(), existingConfig.orElse(null));
+        String tasksJson = writeTasks(savedTasks);
 
         AtcoderLeaderboardConfig config = existingConfig
                 .orElseGet(() -> new AtcoderLeaderboardConfig(
@@ -281,7 +283,7 @@ public class AtcoderLeaderboardService {
         Instant now = clock.instant();
         SnapshotCache current = matchingSnapshot(config.getContestId());
 
-        if (!force && isFresh(config.getContestId(), now) && current != null) return current.view;
+        if (!force && isFresh(config, now) && current != null) return current.view;
         if (!force && current != null && remainingCooldown(now) > 0
                 && (current.view.stale() || !current.view.dataAvailable())) return current.view;
         if (force && current != null) {
@@ -296,7 +298,7 @@ public class AtcoderLeaderboardService {
         try {
             now = clock.instant();
             current = matchingSnapshot(config.getContestId());
-            if (!force && isFresh(config.getContestId(), now) && current != null) return current.view;
+            if (!force && isFresh(config, now) && current != null) return current.view;
             if (!force && current != null && remainingCooldown(now) > 0
                     && (current.view.stale() || !current.view.dataAvailable())) return current.view;
             if (force && current != null) {
@@ -358,7 +360,9 @@ public class AtcoderLeaderboardService {
                 .sorted(candidateComparator())
                 .toList();
 
-        List<TaskView> tasks = standings.tasks().stream()
+        List<AtcoderStandings.Task> displayTasks = tasksWithConfiguredNameFallback(
+                config.getContestId(), standings.tasks(), config);
+        List<TaskView> tasks = displayTasks.stream()
                 .map(task -> toTaskView(config.getContestId(), task)).toList();
         List<EntryView> entries = new ArrayList<>();
         Candidate previousCandidate = null;
@@ -376,7 +380,7 @@ public class AtcoderLeaderboardService {
                 assignedRank = classRank;
                 previousCandidate = candidate;
             }
-            entries.add(toEntryView(candidate, assignedRank, previousRanks.get(candidate.participant.getId()), standings.tasks()));
+            entries.add(toEntryView(candidate, assignedRank, previousRanks.get(candidate.participant.getId()), displayTasks));
         }
 
         ContestView contest = toContestView(config);
@@ -449,6 +453,25 @@ public class AtcoderLeaderboardService {
     private static TaskView toTaskView(String contestId, AtcoderStandings.Task task) {
         return new TaskView(task.id(), task.label(), task.name(), task.maxScore(),
                 "https://atcoder.jp/contests/" + contestId + "/tasks/" + task.id());
+    }
+
+    private List<AtcoderStandings.Task> tasksWithConfiguredNameFallback(
+            String contestId, List<AtcoderStandings.Task> liveTasks, AtcoderLeaderboardConfig config) {
+        if (config == null || !contestId.equalsIgnoreCase(config.getContestId())) return liveTasks;
+        Map<String, AtcoderStandings.Task> configured = new HashMap<>();
+        for (AtcoderStandings.Task task : readTasks(config.getTasksJson())) configured.put(task.id(), task);
+        return liveTasks.stream().map(task -> {
+            AtcoderStandings.Task stored = configured.get(task.id());
+            if (!isUnavailableTaskName(task) || stored == null || isUnavailableTaskName(stored)) return task;
+            return new AtcoderStandings.Task(task.id(), task.label(), stored.name(), task.maxScore());
+        }).toList();
+    }
+
+    private static boolean isUnavailableTaskName(AtcoderStandings.Task task) {
+        if (task == null || task.name() == null || task.name().isBlank()) return true;
+        String name = task.name().strip();
+        if (name.equalsIgnoreCase(task.id()) || name.equalsIgnoreCase(task.label())) return true;
+        return name.matches("(?i)(?:task|problem)\\s*" + Pattern.quote(task.label()));
     }
 
     private ParticipantView toParticipantView(AtcoderLeaderboardParticipant entity) {
@@ -544,9 +567,10 @@ public class AtcoderLeaderboardService {
         return value != null && value.contestId.equals(contestId) ? value : null;
     }
 
-    private boolean isFresh(String contestId, Instant now) {
+    private boolean isFresh(AtcoderLeaderboardConfig config, Instant now) {
         SourceCache source = sourceCache;
-        return source != null && source.contestId.equals(contestId)
+        return source != null && source.contestId.equals(config.getContestId())
+                && !config.getUpdatedAt().isAfter(source.loadedAt)
                 && source.loadedAt.plus(CACHE_TTL).isAfter(now);
     }
 

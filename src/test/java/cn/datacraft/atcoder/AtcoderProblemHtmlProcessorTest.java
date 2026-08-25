@@ -175,7 +175,12 @@ class AtcoderProblemHtmlProcessorTest {
 
                 ## Output
 
-                Print the answer.
+                Print the answer in the following format.
+
+                ```text
+                K
+                v_1 v_2 \\ldots v_K
+                ```
 
                 ## Sample Input 1
 
@@ -210,7 +215,8 @@ class AtcoderProblemHtmlProcessorTest {
         assertThat(rendered).doesNotContain("<h1>", "Contest:", "Problem:")
                 .contains("<var>100</var>", "<var>N</var>", "<code>Yes</code>",
                         "<pre><var>N</var>   <var>Q</var><br><var>U_1</var>   <var>V_1</var>",
-                        "<var>\\vdots</var>", "<var>\\text{query}_1</var>");
+                        "<var>\\vdots</var>", "<var>\\text{query}_1</var>",
+                        "<pre><var>K</var><br><var>v_1</var>   <var>v_2</var>   <var>\\ldots</var>   <var>v_K</var>");
         assertThat(translated).contains("题目描述", "输入格式", "输出格式",
                 "<var>N</var>", "<code>Yes</code>", "<pre><code>1\n</code></pre>");
     }
@@ -240,5 +246,23 @@ class AtcoderProblemHtmlProcessorTest {
         assertThat(translated).contains("题目描述", "<var>N</var>", "<code>Yes</code>",
                 "<pre><code>1\n</code></pre>")
                 .doesNotContain("DATAFORGE_ATCODER_PROTECTED");
+    }
+
+    @Test
+    void formatsOutputAndInteractionButKeepsSamplesAndLiteralWordsAsCode() {
+        String displayed = processor.prepareStatementDisplay("""
+                <h3>输出格式：</h3><p>按以下格式输出：</p><pre>K
+                v_1 v_2 \\ldots v_K
+                Yes</pre>
+                <h3>样例输出 1</h3><pre>3
+                1 2 3</pre>
+                <h3>Interaction</h3><pre>? i j</pre>
+                """);
+
+        assertThat(displayed)
+                .contains("<pre><var>K</var><br>", "<var>\\ldots</var>", "<code>Yes</code>",
+                        "<h3>样例输出 1</h3>", "<pre>3\n1 2 3</pre>",
+                        "<h3>Interaction</h3>", "<pre><code>?</code>   <var>i</var>   <var>j</var></pre>")
+                .doesNotContain("<h3>样例输出 1</h3><pre><var>");
     }
 }

@@ -143,7 +143,8 @@ public class AtcoderProblemTranslationService {
         return new ProblemDetailView(toContestView(config), taskView,
                 stored.map(this::publicSourceHtml).orElse(null),
                 stored.filter(item -> item.getStatus() == AtcoderProblemTranslation.Status.READY)
-                        .map(AtcoderProblemTranslation::getTranslatedHtml).orElse(null),
+                        .map(AtcoderProblemTranslation::getTranslatedHtml)
+                        .map(htmlProcessor::prepareStatementDisplay).orElse(null),
                 stored.map(AtcoderProblemTranslation::getSourceFetchedAt).orElse(null),
                 stored.map(AtcoderProblemTranslation::getTranslatedAt).orElse(null));
     }
@@ -198,7 +199,11 @@ public class AtcoderProblemTranslationService {
                     .findByContestIdAndTaskId(config.getContestId(), taskId)
                     .orElseGet(() -> new AtcoderProblemTranslation(
                             config.getContestId(), task, contestTasks.indexOf(task), clock.instant()));
-            entity.refreshTask(task, contestTasks.indexOf(task));
+            if (htmlProcessor.isMarkdownSource(entity.getSourceHtml())) {
+                entity.refreshImportedTask(task, contestTasks.indexOf(task), entity.getTaskName());
+            } else {
+                entity.refreshTask(task, contestTasks.indexOf(task));
+            }
             String translated;
             if (structured) {
                 translated = htmlProcessor.prepareStructuredManualTranslation(content);
@@ -279,6 +284,7 @@ public class AtcoderProblemTranslationService {
                 AtcoderContestMarkdownParser.ParsedProblem problem = markdownParser.parse(
                         sourceMarkdown.getBytes(StandardCharsets.UTF_8), taskId + ".md").problems().get(0);
                 validateMarkdownTask(config, task, problem);
+                entity.refreshImportedTask(task, tasks.indexOf(task), problem.title());
                 String renderedSource = htmlProcessor.renderMarkdownProblem(problem.sourceMarkdown());
                 entity.queue(now, true);
                 entity.translating(htmlProcessor.prepareMarkdownSource(problem, sourceFilename), now);
@@ -401,10 +407,11 @@ public class AtcoderProblemTranslationService {
                 MarkdownTranslationJob job = jobs.get(task.id());
                 AtcoderProblemTranslation entity = existing.get(task.id());
                 if (entity == null) entity = new AtcoderProblemTranslation(config.getContestId(), task, index, now);
-                else entity.refreshTask(task, index);
+                entity.refreshImportedTask(task, index, job.problem().title());
                 entity.imported(htmlProcessor.prepareMarkdownSource(job.problem(), parsed.filename()), now);
                 translations.saveAndFlush(entity);
             }
+            updateMarkdownTaskNames(config, tasks, jobs, now);
             return adminOverview();
         } finally {
             lifecycleLock.unlock();
@@ -615,10 +622,6 @@ public class AtcoderProblemTranslationService {
             throw new IllegalArgumentException("Markdown 题目 " + problem.label() + " 的 Problem 为 "
                     + problem.problemId() + "，应为 " + task.id());
         }
-        if (!sameTitle(task.name(), problem.title())) {
-            throw new IllegalArgumentException("Markdown 题目 " + task.label() + " 标题为“" + problem.title()
-                    + "”，与当前比赛“" + task.name() + "”不一致");
-        }
     }
 
     private static void validateImportedLabels(String sourceName, List<AtcoderStandings.Task> tasks,
@@ -717,7 +720,9 @@ public class AtcoderProblemTranslationService {
         String sourceType = stored == null || stored.getSourceHtml() == null ? null
                 : (htmlProcessor.isMarkdownSource(stored.getSourceHtml()) ? "MARKDOWN"
                 : (htmlProcessor.isPdfSource(stored.getSourceHtml()) ? "PDF" : "ATCODER"));
-        return new ProblemTaskView(task.id(), task.label(), task.name(),
+        return new ProblemTaskView(task.id(), task.label(),
+                stored == null || stored.getTaskName() == null || stored.getTaskName().isBlank()
+                        ? task.name() : stored.getTaskName(),
                 stored == null ? "NOT_STARTED" : stored.getStatus().name(),
                 officialTaskUrl(contestId, task.id()),
                 stored == null ? null : stored.getUpdatedAt(),
@@ -810,11 +815,27 @@ public class AtcoderProblemTranslationService {
 
     private String publicSourceHtml(AtcoderProblemTranslation item) {
         String source = item.getSourceHtml();
-        if (!htmlProcessor.isMarkdownSource(source)) return source;
+        if (!htmlProcessor.isMarkdownSource(source)) return htmlProcessor.prepareStatementDisplay(source);
         try {
             return htmlProcessor.renderMarkdownProblem(htmlProcessor.markdownSourceText(source));
         } catch (RuntimeException ignored) {
             return source;
+        }
+    }
+
+    private void updateMarkdownTaskNames(AtcoderLeaderboardConfig config, List<AtcoderStandings.Task> tasks,
+                                         Map<String, MarkdownTranslationJob> jobs, Instant now) {
+        List<AtcoderStandings.Task> renamed = tasks.stream().map(task -> {
+            MarkdownTranslationJob job = jobs.get(task.id());
+            return job == null ? task : new AtcoderStandings.Task(
+                    task.id(), task.label(), job.problem().title(), task.maxScore());
+        }).toList();
+        try {
+            config.update(config.getContestId(), config.getDisplayTitle(), config.getOfficialTitle(),
+                    config.getStartAt(), config.getEndAt(), mapper.writeValueAsString(renamed), now);
+            configs.saveAndFlush(config);
+        } catch (Exception ex) {
+            throw new IllegalStateException("保存 Markdown 题目名称失败", ex);
         }
     }
 

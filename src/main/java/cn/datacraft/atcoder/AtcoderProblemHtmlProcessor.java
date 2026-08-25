@@ -32,6 +32,10 @@ class AtcoderProblemHtmlProcessor {
     private static final Pattern MANUAL_SECTION = Pattern.compile("^\\s*【([^】]+)】\\s*$");
     private static final Pattern SAMPLE_SECTION = Pattern.compile("样例(?:输入|输出)\\s*\\d+", Pattern.CASE_INSENSITIVE);
     private static final Set<String> MANUAL_HEADINGS = Set.of("题目描述", "输入格式", "输出格式", "说明", "数据范围");
+    private static final Set<String> SYMBOLIC_FORMAT_HEADINGS = Set.of(
+            "input", "input format", "输入", "输入格式",
+            "output", "output format", "输出", "输出格式",
+            "interaction", "interaction format", "交互", "交互格式");
     private static final Safelist STATEMENT_TAGS = new Safelist()
             .addTags("div", "section", "p", "h2", "h3", "h4", "ul", "ol", "li",
                     "pre", "code", "var", "span", "strong", "em", "b", "i", "br", "hr",
@@ -142,7 +146,7 @@ class AtcoderProblemHtmlProcessor {
         if (document.select("pre").size() < requiredSamples) {
             throw new IllegalStateException("AI 未完整保留 PDF 中的样例输入输出，请重试该题");
         }
-        return translated;
+        return prepareStatementDisplay(translated);
     }
 
     boolean isPdfSource(String sourceHtml) {
@@ -176,7 +180,7 @@ class AtcoderProblemHtmlProcessor {
                 && metadata.text().contains("Problem:")) {
             metadata.remove();
         }
-        convertInputFormatBlocks(document);
+        convertSymbolicFormatBlocks(document);
         wrapMarkdownMath(document);
         String cleaned = cleanFragment(document.body().html());
         if (fragment(cleaned).body().text().isBlank()) {
@@ -213,7 +217,7 @@ class AtcoderProblemHtmlProcessor {
         if (document.select("pre").size() < requiredSamples) {
             throw new IllegalStateException("AI 未完整保留 Markdown 中的样例输入输出，请重试该题");
         }
-        return translated;
+        return prepareStatementDisplay(translated);
     }
 
     String markdownSourceText(String sourceHtml) {
@@ -251,20 +255,44 @@ class AtcoderProblemHtmlProcessor {
         return value.isBlank() ? "contest.md" : value;
     }
 
-    private static void convertInputFormatBlocks(Document document) {
-        for (Element heading : document.select("h2,h3")) {
-            String title = heading.text().strip().toLowerCase(Locale.ROOT);
-            if (!title.equals("input") && !title.equals("input format")) continue;
-            Element current = heading.nextElementSibling();
-            while (current != null && !current.tagName().matches("h1|h2")) {
-                Element next = current.nextElementSibling();
-                if (current.tagName().equals("pre")) renderInputFormatBlock(current);
-                current = next;
-            }
+    String prepareStatementDisplay(String statementHtml) {
+        if (statementHtml == null || statementHtml.isBlank()) return statementHtml;
+        Document document = fragment(statementHtml);
+        convertSymbolicFormatBlocks(document);
+        wrapMarkdownMath(document);
+        return cleanFragment(document.body().html());
+    }
+
+    private static void convertSymbolicFormatBlocks(Document document) {
+        for (Element block : new ArrayList<>(document.select("pre"))) {
+            Element heading = nearestSectionHeading(block);
+            if (heading == null || !isSymbolicFormatHeading(heading.text())) continue;
+            renderSymbolicFormatBlock(block);
         }
     }
 
-    private static void renderInputFormatBlock(Element block) {
+    private static Element nearestSectionHeading(Element block) {
+        Element current = block;
+        while (current != null && !current.tagName().equals("body")) {
+            Element sibling = current.previousElementSibling();
+            while (sibling != null) {
+                if (sibling.is("h2,h3,h4")) return sibling;
+                List<Element> nestedHeadings = sibling.select("h2,h3,h4");
+                if (!nestedHeadings.isEmpty()) return nestedHeadings.get(nestedHeadings.size() - 1);
+                sibling = sibling.previousElementSibling();
+            }
+            current = current.parent();
+        }
+        return null;
+    }
+
+    private static boolean isSymbolicFormatHeading(String heading) {
+        String normalized = heading == null ? "" : heading.strip().toLowerCase(Locale.ROOT)
+                .replaceFirst("[：:]\\s*$", "").strip();
+        return SYMBOLIC_FORMAT_HEADINGS.contains(normalized);
+    }
+
+    private static void renderSymbolicFormatBlock(Element block) {
         String source = block.wholeText().replace("\r\n", "\n").replace('\r', '\n');
         block.empty();
         String[] lines = source.split("\\n", -1);
@@ -274,10 +302,18 @@ class AtcoderProblemHtmlProcessor {
             List<String> tokens = splitInputFormatTokens(lines[lineIndex]);
             for (int tokenIndex = 0; tokenIndex < tokens.size(); tokenIndex++) {
                 if (tokenIndex > 0) block.appendChild(new TextNode("   "));
-                block.appendElement("var").text(tokens.get(tokenIndex));
+                String token = tokens.get(tokenIndex);
+                block.appendElement(isSymbolicFormatToken(token) ? "var" : "code").text(token);
             }
             if (lineIndex + 1 < lineCount) block.appendElement("br");
         }
+    }
+
+    private static boolean isSymbolicFormatToken(String token) {
+        if (token == null || token.isBlank()) return false;
+        if (token.length() == 1 && Character.isLetter(token.charAt(0))) return true;
+        if (token.matches("[a-z]{1,3}")) return true;
+        return token.matches(".*[\\\\_^{}<>=+*/0-9].*") || token.equals("...");
     }
 
     private static List<String> splitInputFormatTokens(String line) {

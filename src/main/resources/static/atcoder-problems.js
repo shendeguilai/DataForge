@@ -128,15 +128,18 @@ function renderStatement() {
 function enhanceCodeBlocks(content) {
   content.querySelectorAll('pre').forEach(pre => {
     const heading = codeBlockHeading(pre);
-    const inputFormat = /^(input|input format|输入|输入格式)$/i.test(heading.trim());
+    const formatKind = statementFormatKind(heading);
     const wrapper = document.createElement('div');
-    wrapper.className = inputFormat ? 'code-sample input-format-panel' : 'code-sample';
+    wrapper.className = formatKind
+      ? `code-sample statement-format-panel ${formatKind}-format-panel` : 'code-sample';
     pre.parentNode.insertBefore(wrapper, pre);
     wrapper.appendChild(pre);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-sample';
-    button.textContent = inputFormat ? '复制格式' : copyLabel(heading);
+    button.textContent = formatKind
+      ? `复制${formatKind === 'interaction' ? '交互' : formatKind === 'input' ? '输入' : '输出'}格式`
+      : copyLabel(heading);
     button.onclick = async () => {
       try {
         await copyText(pre.textContent.replace(/\n$/, ''));
@@ -149,6 +152,14 @@ function enhanceCodeBlocks(content) {
     };
     wrapper.appendChild(button);
   });
+}
+
+function statementFormatKind(heading) {
+  const normalized = (heading || '').trim().replace(/[：:]\s*$/, '').toLowerCase();
+  if (['input', 'input format', '输入', '输入格式'].includes(normalized)) return 'input';
+  if (['output', 'output format', '输出', '输出格式'].includes(normalized)) return 'output';
+  if (['interaction', 'interaction format', '交互', '交互格式'].includes(normalized)) return 'interaction';
+  return '';
 }
 
 function codeBlockHeading(pre) {

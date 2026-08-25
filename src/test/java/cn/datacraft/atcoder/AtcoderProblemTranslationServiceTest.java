@@ -253,8 +253,8 @@ class AtcoderProblemTranslationServiceTest {
         service = new AtcoderProblemTranslationService(
                 configs, translations, taskSource(), markdownTranslator, new AtcoderProblemHtmlProcessor(),
                 new ObjectMapper().findAndRegisterModules(), direct, direct, Clock.systemUTC());
-        String markdown = markdownProblem("A", "Warm Up", "abc430_a", "N", "1")
-                + "\n\n" + markdownProblem("B", "Strings", "abc430_b", "S", "abc");
+        String markdown = markdownProblem("A", "Markdown Warm Up", "abc430_a", "N", "1")
+                + "\n\n" + markdownProblem("B", "Markdown Strings", "abc430_b", "S", "abc");
 
         ProblemOverviewView result = service.importMarkdown(
                 "ABC430_ALL.md", markdown.getBytes(StandardCharsets.UTF_8));
@@ -264,6 +264,8 @@ class AtcoderProblemTranslationServiceTest {
         assertThat(result.importedBundle().filename()).isEqualTo("ABC430_ALL.md");
         assertThat(result.importedBundle().problemCount()).isEqualTo(2);
         assertThat(result.tasks()).extracting(task -> task.status()).containsOnly("IMPORTED");
+        assertThat(result.tasks()).extracting(task -> task.name())
+                .containsExactly("Markdown Warm Up", "Markdown Strings");
         assertThat(service.adminDetail("abc430_a").sourceHtml())
                 .contains("Markdown Imported Source", "Imported file: ABC430_ALL.md", "Problem: `abc430_a`");
         assertThat(service.detail("abc430_a").translatedHtml()).isNull();
@@ -272,6 +274,7 @@ class AtcoderProblemTranslationServiceTest {
 
         assertThat(retried.status()).isEqualTo("PARTIAL");
         assertThat(retried.readyCount()).isEqualTo(1);
+        assertThat(retried.tasks().get(0).name()).isEqualTo("Markdown Warm Up");
         assertThat(service.adminDetail("abc430_a").sourceHtml()).contains("Markdown Imported Source");
         assertThat(service.detail("abc430_a").translatedHtml())
                 .contains("题目描述", "<var>N</var>", "<pre><code>1\n</code></pre>");

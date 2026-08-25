@@ -107,6 +107,26 @@ class AtcoderLeaderboardServiceTest {
         assertThat(service.currentLeaderboard().entries()).extracting(EntryView::classRank).containsExactly(1, 1, 3);
     }
 
+    @Test
+    void usesPersistedMarkdownTitleWhenLiveStandingsOnlyExposeTaskId() throws Exception {
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        AtcoderStandings.Task configuredTask = new AtcoderStandings.Task(
+                "abc430_a", "A", "Markdown Official Title", BigDecimal.valueOf(100));
+        AtcoderLeaderboardConfig config = new AtcoderLeaderboardConfig(
+                "abc430", "校内 ABC430 排行榜", "AtCoder Beginner Contest 430",
+                Instant.parse("2026-08-20T00:00:00Z"), Instant.parse("2026-08-20T03:00:00Z"),
+                mapper.writeValueAsString(List.of(configuredTask)), clock.instant());
+        when(configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID)).thenReturn(Optional.of(config));
+        when(participants.findAllByOrderBySortOrderAscIdAsc()).thenReturn(List.of());
+        when(gateway.fetchStandings("abc430")).thenReturn(new AtcoderStandings.Snapshot(
+                List.of(new AtcoderStandings.Task(
+                        "abc430_a", "A", "abc430_a", BigDecimal.valueOf(100))), Map.of()));
+
+        LeaderboardView view = service.currentLeaderboard();
+
+        assertThat(view.tasks().get(0).name()).isEqualTo("Markdown Official Title");
+    }
+
     private static AtcoderLeaderboardParticipant participant(Long id, String name, String username, int order) {
         AtcoderLeaderboardParticipant participant = new AtcoderLeaderboardParticipant(
                 name, username, username.toLowerCase(), order, Instant.parse("2026-08-20T00:00:00Z")

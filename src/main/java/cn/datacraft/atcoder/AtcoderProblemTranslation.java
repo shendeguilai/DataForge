@@ -82,6 +82,12 @@ class AtcoderProblemTranslation {
         this.taskOrder = order;
     }
 
+    void refreshImportedTask(AtcoderStandings.Task task, int order, String importedTaskName) {
+        this.taskLabel = task.label();
+        this.taskName = importedTaskName;
+        this.taskOrder = order;
+    }
+
     void queue(Instant now, boolean clearContent) {
         status = Status.QUEUED;
         errorMessage = null;
