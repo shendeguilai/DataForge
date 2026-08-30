@@ -53,10 +53,12 @@ class CspPaperStudioClientTest {
 
     @Test
     void mapsTimeoutToGatewayTimeout() {
-        properties.setAnalyzeTimeout(Duration.ofMillis(30));
+        // Leave enough time for the loopback connection to be accepted on a busy CI runner;
+        // the handler delay remains much longer than the request timeout being exercised.
+        properties.setAnalyzeTimeout(Duration.ofMillis(300));
         server.createContext("/api/analyze", exchange -> {
             try {
-                Thread.sleep(150);
+                Thread.sleep(2_000);
                 json(exchange, 200, "{}");
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
