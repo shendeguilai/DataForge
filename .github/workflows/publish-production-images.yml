@@ -1,0 +1,91 @@
+name: Publish production images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: production-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  publish-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push DataForge
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/dataforge:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=dataforge-app
+          cache-to: type=gha,mode=max,scope=dataforge-app
+          provenance: false
+
+  publish-csp-studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CSP Paper Studio
+        uses: docker/build-push-action@v6
+        with:
+          context: services/csp-paper-studio
+          file: services/csp-paper-studio/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/dataforge-csp-studio:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=dataforge-csp-studio
+          cache-to: type=gha,mode=max,scope=dataforge-csp-studio
+          provenance: false
+
+  mirror-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror PostgreSQL runtime image
+        run: |
+          set -eu
+          source_image=postgres:17.10-bookworm
+          target_image="$IMAGE_PREFIX/dataforge-postgres:17.10-bookworm"
+          docker pull --platform linux/amd64 "$source_image"
+          docker tag "$source_image" "$target_image"
+          docker push "$target_image"

@@ -26,7 +26,7 @@ x-app-environment: &app-environment
   QUIZ_ROOM_CAPACITY: ${QUIZ_ROOM_CAPACITY:-60}
 
 x-app-base: &app-base
-  image: dataforge:${DATAFORGE_IMAGE_TAG:-local}
+  image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge:${DATAFORGE_IMAGE_TAG:-local}
   environment: *app-environment
   volumes:
     - ${DATAFORGE_RUNTIME_DIR_HOST:?DATAFORGE_RUNTIME_DIR_HOST is required}:/var/lib/dataforge/runtime
@@ -41,7 +41,7 @@ x-app-base: &app-base
 
 services:
   db:
-    image: postgres:17.10-bookworm
+    image: ${DATAFORGE_POSTGRES_IMAGE:-postgres:17.10-bookworm}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -77,7 +77,7 @@ services:
     restart: unless-stopped
 
   csp-studio:
-    image: dataforge-csp-studio:${DATAFORGE_IMAGE_TAG:-local}
+    image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-csp-studio:${DATAFORGE_IMAGE_TAG:-local}
     build:
       context: services/csp-paper-studio
       dockerfile: Dockerfile

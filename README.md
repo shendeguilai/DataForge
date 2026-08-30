@@ -58,6 +58,8 @@ mvn spring-boot:run
 
 生产环境使用 PostgreSQL、Docker Compose、仓库外持久目录和 Flyway 数据库迁移。首次部署、H2 全量迁移、备份、GitHub 更新和回滚请严格按照 [生产部署与持续更新手册](docs/PRODUCTION_DEPLOYMENT.md) 操作。
 
+生产服务器无法访问 Docker Hub 时，可使用 [GitHub Actions + GHCR 成品镜像部署](docs/GHCR_IMAGE_DEPLOYMENT.md)，生产机不再执行基础镜像拉取和应用构建。
+
 首次打开会预填“数列求和”演示题，可以不配置 AI 直接体验完整流程。
 
 ## 配置 AI

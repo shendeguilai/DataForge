@@ -91,6 +91,14 @@ docker compose \
   -f compose.prod.yml config >/dev/null
 ```
 
+如果生产服务器无法访问 Docker Hub，使用 GitHub Actions 构建成品镜像并从 GHCR 拉取。完整设置见 [使用 GHCR 部署生产镜像](GHCR_IMAGE_DEPLOYMENT.md)。配置完成后在生产环境文件中设置：
+
+```text
+DATAFORGE_IMAGE_SOURCE=registry
+DATAFORGE_REGISTRY_PREFIX=ghcr.io/<GitHub 用户或组织>/
+DATAFORGE_POSTGRES_IMAGE=ghcr.io/<GitHub 用户或组织>/dataforge-postgres:17.10-bookworm
+```
+
 ## 4. 首次从 H2 全量迁移
 
 先停止旧服务，确认没有 Java 进程占用 H2。只复制 `dataforge.mv.db`，不要复制 `dataforge.lock.db`。
@@ -191,7 +199,7 @@ git status --short
 
 1. 拒绝有本地改动的工作区，记录当前成功提交。
 2. 使用 `git pull --ff-only` 拉取 GitHub 更新。
-3. 以新提交号构建 Java 与 CSP Paper Studio 两个镜像；构建失败时旧服务继续运行。
+3. `build` 模式以新提交号在服务器构建镜像；`registry` 模式从私有仓库拉取 GitHub Actions 已发布的成品镜像。准备失败时旧服务继续运行。
 4. 停止应用，创建 `*-predeploy` 数据库和 runtime 备份。
 5. 启动新镜像；Flyway 在 JPA 启动前应用新迁移并校验历史校验和。
 6. 等待 CSP Paper Studio 与 `/actuator/health` 都返回 `UP`，成功后写入 `deployed_commit`。
@@ -207,7 +215,7 @@ git status --short
 ls -1 /srv/dataforge/backups
 ```
 
-恢复会停止应用、校验 SHA-256、恢复 PostgreSQL 和 runtime、切换到备份记录的 Git 提交并重新构建：
+恢复会先确认目标版本镜像可用，再停止应用、校验 SHA-256、恢复 PostgreSQL 和 runtime，并切换到备份记录的 Git 提交。`build` 模式重新构建，`registry` 模式拉取对应提交的成品镜像：
 
 ```bash
 ./scripts/prod.sh restore 20260721T030000Z --confirm

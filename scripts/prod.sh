@@ -37,7 +37,22 @@ load_environment() {
 
   PUBLIC_PORT=${PUBLIC_PORT:-8080}
   DATAFORGE_IMAGE_TAG=${DATAFORGE_IMAGE_TAG:-local}
+  DATAFORGE_IMAGE_SOURCE=${DATAFORGE_IMAGE_SOURCE:-build}
   STATE_FILE=${DATAFORGE_STATE_FILE:-/srv/dataforge/deployed_commit}
+  case "$DATAFORGE_IMAGE_SOURCE" in
+    build) ;;
+    registry)
+      : "${DATAFORGE_REGISTRY_PREFIX:?registry 模式必须配置 DATAFORGE_REGISTRY_PREFIX}"
+      : "${DATAFORGE_POSTGRES_IMAGE:?registry 模式必须配置 DATAFORGE_POSTGRES_IMAGE}"
+      [[ "$DATAFORGE_REGISTRY_PREFIX" != http://* && "$DATAFORGE_REGISTRY_PREFIX" != https://* ]] ||
+        die "DATAFORGE_REGISTRY_PREFIX 不能包含 http:// 或 https://"
+      [[ "$DATAFORGE_REGISTRY_PREFIX" == */ ]] ||
+        die "DATAFORGE_REGISTRY_PREFIX 必须以 / 结尾"
+      [[ "$DATAFORGE_POSTGRES_IMAGE" == "$DATAFORGE_REGISTRY_PREFIX"* ]] ||
+        die "registry 模式下 DATAFORGE_POSTGRES_IMAGE 必须位于 DATAFORGE_REGISTRY_PREFIX 下"
+      ;;
+    *) die "DATAFORGE_IMAGE_SOURCE 仅允许 build 或 registry" ;;
+  esac
   validate_path "$DATAFORGE_POSTGRES_DIR"
   validate_path "$DATAFORGE_RUNTIME_DIR_HOST"
   validate_path "$DATAFORGE_BACKUP_DIR"
@@ -69,6 +84,53 @@ compose_tagged() {
   local tag=$1
   shift
   DATAFORGE_IMAGE_TAG="$tag" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+uses_registry_images() {
+  [[ "$DATAFORGE_IMAGE_SOURCE" == "registry" ]]
+}
+
+prepare_release_images() {
+  local tag=$1
+  if uses_registry_images; then
+    echo "从私有镜像仓库拉取提交：$tag"
+    compose_tagged "$tag" pull db app csp-studio
+  else
+    echo "在服务器构建提交：$tag"
+    compose_tagged "$tag" build app csp-studio
+  fi
+}
+
+cache_registry_images_with_local_tags() {
+  local tag=$1
+  local app_image="${DATAFORGE_REGISTRY_PREFIX}dataforge:${tag}"
+  local csp_image="${DATAFORGE_REGISTRY_PREFIX}dataforge-csp-studio:${tag}"
+  local historical_compose
+  git -C "$REPO_ROOT" cat-file -e "${tag}^{commit}" 2>/dev/null ||
+    die "本地 Git 仓库中不存在备份提交：$tag"
+  historical_compose=$(git -C "$REPO_ROOT" show "${tag}:compose.prod.yml")
+  docker pull "$app_image"
+  docker tag "$app_image" "dataforge:${tag}"
+  if [[ "$historical_compose" == *csp-studio* ]]; then
+    docker pull "$csp_image"
+    docker tag "$csp_image" "dataforge-csp-studio:${tag}"
+  fi
+  docker pull "$DATAFORGE_POSTGRES_IMAGE"
+  docker tag "$DATAFORGE_POSTGRES_IMAGE" "postgres:17.10-bookworm"
+}
+
+start_database() {
+  if uses_registry_images; then
+    compose up -d --no-build --pull never db
+  else
+    compose up -d db
+  fi
+}
+
+start_tagged_service() {
+  local tag=$1
+  local service=$2
+  compose_tagged "$tag" up -d --no-build --pull never "$service"
 }
 
 wait_for_database() {
@@ -173,9 +235,8 @@ deploy() {
 
   git -C "$REPO_ROOT" pull --ff-only
   next_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  echo "构建提交：$next_commit"
-  compose_tagged "$next_commit" build app csp-studio
-  compose up -d db
+  prepare_release_images "$next_commit"
+  start_database
   wait_for_database
 
   compose stop app csp-studio >/dev/null 2>&1 || true
@@ -183,9 +244,9 @@ deploy() {
     backup_database "$(date -u +%Y%m%dT%H%M%SZ)-predeploy"
   fi
 
-  if compose_tagged "$next_commit" up -d csp-studio \
+  if start_tagged_service "$next_commit" csp-studio \
       && wait_for_csp_studio \
-      && compose_tagged "$next_commit" up -d app \
+      && start_tagged_service "$next_commit" app \
       && wait_for_application; then
     printf '%s\n' "$next_commit" > "$STATE_FILE"
     cleanup_old_backups
@@ -194,9 +255,12 @@ deploy() {
   fi
 
   echo "新版本启动失败，尝试恢复旧镜像：$previous_commit" >&2
+  if uses_registry_images; then
+    compose_tagged "$previous_commit" pull app || true
+  fi
   # 首次引入 CSP 服务时，旧提交没有对应的 Python 镜像。旧版 Java 应用
   # 也不会访问该服务，因此保留当前 CSP 容器，仅恢复旧版 app 镜像。
-  compose_tagged "$previous_commit" up -d --no-deps app || true
+  compose_tagged "$previous_commit" up -d --no-build --pull never --no-deps app || true
   wait_for_application || true
   die "部署失败。数据库若已执行不兼容迁移，请使用部署前备份执行 restore"
 }
@@ -215,7 +279,13 @@ restore_backup() {
   [[ -n ${git_commit:-} ]] || die "备份清单缺少 git_commit"
   [[ -z $(git -C "$REPO_ROOT" status --porcelain) ]] || die "Git 工作区有未提交改动，拒绝恢复"
 
-  compose up -d db
+  # 先确认目标版本镜像可用，再停止应用和恢复数据。额外的本地标签兼容
+  # 尚未支持 DATAFORGE_REGISTRY_PREFIX 的历史 Compose 文件。
+  if uses_registry_images; then
+    cache_registry_images_with_local_tags "$git_commit"
+  fi
+
+  start_database
   wait_for_database
   compose stop app csp-studio >/dev/null 2>&1 || true
   compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
@@ -231,13 +301,17 @@ restore_backup() {
   fi
 
   git -C "$REPO_ROOT" switch --detach "$git_commit"
-  compose_tagged "$git_commit" build app
+  if ! uses_registry_images; then
+    compose_tagged "$git_commit" build app
+    if compose_has_csp_studio; then
+      compose_tagged "$git_commit" build csp-studio
+    fi
+  fi
   if compose_has_csp_studio; then
-    compose_tagged "$git_commit" build csp-studio
-    compose_tagged "$git_commit" up -d csp-studio
+    start_tagged_service "$git_commit" csp-studio
     wait_for_csp_studio || die "数据已恢复，但对应 CSP Paper Studio 服务未通过健康检查"
   fi
-  compose_tagged "$git_commit" up -d app
+  start_tagged_service "$git_commit" app
   wait_for_application || die "数据已恢复，但对应应用版本未通过健康检查"
   printf '%s\n' "$git_commit" > "$STATE_FILE"
   echo "恢复完成：$backup_id；恢复前 runtime 保留在 $safety_path"
@@ -250,14 +324,14 @@ import_h2() {
     die "请把旧 runtime 目录放到 $DATAFORGE_MIGRATION_DIR/runtime"
   local tag
   tag=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  compose_tagged "$tag" build app csp-studio
-  compose up -d db
+  prepare_release_images "$tag"
+  start_database
   wait_for_database
   compose stop app csp-studio >/dev/null 2>&1 || true
   DATAFORGE_IMAGE_TAG="$tag" compose --profile tools run --rm importer
-  compose_tagged "$tag" up -d csp-studio
+  start_tagged_service "$tag" csp-studio
   wait_for_csp_studio || die "迁移完成，但 CSP Paper Studio 服务未通过健康检查"
-  compose_tagged "$tag" up -d app
+  start_tagged_service "$tag" app
   wait_for_application || die "迁移完成，但应用未通过健康检查"
   printf '%s\n' "$tag" > "$STATE_FILE"
   echo "H2 数据迁移及应用启动完成"
@@ -289,7 +363,7 @@ usage() {
   cat <<'USAGE'
 用法：./scripts/prod.sh <command>
 
-  deploy                         拉取、备份、构建并部署最新版
+  deploy                         拉取代码，构建或拉取镜像并部署最新版
   backup [backup-id]             备份 PostgreSQL、runtime 和版本清单
   restore <backup-id> --confirm  恢复数据库、runtime 和对应代码版本
   import-h2                      从迁移目录导入旧 H2 与历史 ZIP
@@ -311,7 +385,7 @@ main() {
   case ${1:-} in
     deploy) deploy ;;
     backup)
-      compose up -d db
+      start_database
       wait_for_database
       database_has_schema || die "数据库尚未初始化"
       backup_database "${2:-}"
