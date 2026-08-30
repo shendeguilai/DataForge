@@ -95,6 +95,24 @@ wait_for_application() {
   return 1
 }
 
+wait_for_csp_studio() {
+  local attempts=30
+  while (( attempts > 0 )); do
+    if compose exec -T csp-studio python -c \
+      "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3))['status']=='UP'" \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+    attempts=$((attempts - 1))
+  done
+  return 1
+}
+
+compose_has_csp_studio() {
+  compose config --services | grep -qx 'csp-studio'
+}
+
 database_has_schema() {
   local answer
   answer=$(compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
@@ -156,16 +174,19 @@ deploy() {
   git -C "$REPO_ROOT" pull --ff-only
   next_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
   echo "构建提交：$next_commit"
-  compose_tagged "$next_commit" build app
+  compose_tagged "$next_commit" build app csp-studio
   compose up -d db
   wait_for_database
 
-  compose stop app >/dev/null 2>&1 || true
+  compose stop app csp-studio >/dev/null 2>&1 || true
   if database_has_schema; then
     backup_database "$(date -u +%Y%m%dT%H%M%SZ)-predeploy"
   fi
 
-  if compose_tagged "$next_commit" up -d app && wait_for_application; then
+  if compose_tagged "$next_commit" up -d csp-studio \
+      && wait_for_csp_studio \
+      && compose_tagged "$next_commit" up -d app \
+      && wait_for_application; then
     printf '%s\n' "$next_commit" > "$STATE_FILE"
     cleanup_old_backups
     echo "部署成功：$next_commit"
@@ -173,7 +194,9 @@ deploy() {
   fi
 
   echo "新版本启动失败，尝试恢复旧镜像：$previous_commit" >&2
-  compose_tagged "$previous_commit" up -d app || true
+  # 首次引入 CSP 服务时，旧提交没有对应的 Python 镜像。旧版 Java 应用
+  # 也不会访问该服务，因此保留当前 CSP 容器，仅恢复旧版 app 镜像。
+  compose_tagged "$previous_commit" up -d --no-deps app || true
   wait_for_application || true
   die "部署失败。数据库若已执行不兼容迁移，请使用部署前备份执行 restore"
 }
@@ -194,7 +217,7 @@ restore_backup() {
 
   compose up -d db
   wait_for_database
-  compose stop app >/dev/null 2>&1 || true
+  compose stop app csp-studio >/dev/null 2>&1 || true
   compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
     pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges \
     < "$source/database.dump"
@@ -209,6 +232,11 @@ restore_backup() {
 
   git -C "$REPO_ROOT" switch --detach "$git_commit"
   compose_tagged "$git_commit" build app
+  if compose_has_csp_studio; then
+    compose_tagged "$git_commit" build csp-studio
+    compose_tagged "$git_commit" up -d csp-studio
+    wait_for_csp_studio || die "数据已恢复，但对应 CSP Paper Studio 服务未通过健康检查"
+  fi
   compose_tagged "$git_commit" up -d app
   wait_for_application || die "数据已恢复，但对应应用版本未通过健康检查"
   printf '%s\n' "$git_commit" > "$STATE_FILE"
@@ -222,11 +250,13 @@ import_h2() {
     die "请把旧 runtime 目录放到 $DATAFORGE_MIGRATION_DIR/runtime"
   local tag
   tag=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  compose_tagged "$tag" build app
+  compose_tagged "$tag" build app csp-studio
   compose up -d db
   wait_for_database
-  compose stop app >/dev/null 2>&1 || true
+  compose stop app csp-studio >/dev/null 2>&1 || true
   DATAFORGE_IMAGE_TAG="$tag" compose --profile tools run --rm importer
+  compose_tagged "$tag" up -d csp-studio
+  wait_for_csp_studio || die "迁移完成，但 CSP Paper Studio 服务未通过健康检查"
   compose_tagged "$tag" up -d app
   wait_for_application || die "迁移完成，但应用未通过健康检查"
   printf '%s\n' "$tag" > "$STATE_FILE"
@@ -291,7 +321,7 @@ main() {
     import-h2) import_h2 ;;
     reset-admin-password) reset_admin_password "${2:-}" ;;
     status) show_status ;;
-    logs) compose logs -f --tail=200 app ;;
+    logs) compose logs -f --tail=200 app csp-studio ;;
     *) usage; exit 2 ;;
   esac
 }

@@ -1,6 +1,6 @@
 # DataForge 生产部署与持续更新手册
 
-本文档适用于单台 Linux 服务器，使用 Docker Compose 运行 DataForge 与 PostgreSQL。代码固定放在 `/opt/dataforge/app`，数据库、生成文件、备份和密钥全部位于 Git 仓库之外，因此后续 `git pull` 不会覆盖生产数据。
+本文档适用于单台 Linux 服务器，使用 Docker Compose 运行 DataForge、CSP Paper Studio 内部服务与 PostgreSQL。代码固定放在 `/opt/dataforge/app`，数据库、生成文件、备份和密钥全部位于 Git 仓库之外，因此后续 `git pull` 不会覆盖生产数据。
 
 > [!WARNING]
 > 当前 8080 提供的是明文 HTTP，账号密码会以未加密连接传输。必须用云安全组或服务器防火墙把 8080 限制为可信来源 IP。应用会编译并运行用户提交的 C++，目前没有任务级 gVisor 沙箱，只允许受控用户。PostgreSQL 5432 不得开放到公网。
@@ -18,6 +18,8 @@
 | `/srv/dataforge/deployed_commit` | 当前成功部署的 Git 提交 | 不会 |
 
 用户、任务、文章和 AI 配置保存在 PostgreSQL；抢答题库 JSON 与卡片图片随 Git 发布；Session、打字房间和抢答房间仍在内存中，应用重启后会失效。
+
+CSP Paper Studio 的 Markdown 和 Word 文件不持久化：解析只在内存中进行，导出临时文件会在下载完成后删除，因此不属于备份范围。Python 服务只在 Compose 内网暴露 8765，宿主机和公网均不发布该端口。
 
 ## 2. 服务器准备
 
@@ -140,6 +142,7 @@ curl --fail http://127.0.0.1:8080/actuator/health
 - 新建普通账号、修改打字文章。
 - 创建一项小规模生成任务并下载 ZIP。
 - 历史存在 ZIP 的已完成任务仍可下载。
+- 从“实用工具”进入 CSP Paper Studio，加载 2022j 示例并成功导出 Word。
 - 服务器安全组仅允许指定来源访问 8080，5432 没有监听公网端口。
 
 ## 6. 日常命令
@@ -188,10 +191,10 @@ git status --short
 
 1. 拒绝有本地改动的工作区，记录当前成功提交。
 2. 使用 `git pull --ff-only` 拉取 GitHub 更新。
-3. 以新提交号构建镜像；构建失败时旧服务继续运行。
+3. 以新提交号构建 Java 与 CSP Paper Studio 两个镜像；构建失败时旧服务继续运行。
 4. 停止应用，创建 `*-predeploy` 数据库和 runtime 备份。
 5. 启动新镜像；Flyway 在 JPA 启动前应用新迁移并校验历史校验和。
-6. 等待 `/actuator/health` 返回 `UP`，成功后写入 `deployed_commit`。
+6. 等待 CSP Paper Studio 与 `/actuator/health` 都返回 `UP`，成功后写入 `deployed_commit`。
 7. 健康检查失败时自动尝试恢复旧镜像。
 
 生产配置和数据都在仓库外，因此 `git pull` 不会覆盖它们。以后新增数据库字段时，必须新建 `V2__...sql`、`V3__...sql` 等迁移；已在生产执行的 SQL 文件绝对不能修改或删除。
@@ -235,7 +238,7 @@ Flyway Community 不提供自动 SQL 回滚。所有常规迁移应采用向后�
 docker compose --env-file /etc/dataforge/dataforge.env -f compose.prod.yml ps
 ```
 
-重点检查数据库密码、磁盘空间、Flyway 校验错误和 `/srv/dataforge/runtime` 权限。
+重点检查数据库密码、磁盘空间、Flyway 校验错误、CSP Paper Studio 容器健康状态和 `/srv/dataforge/runtime` 权限。`./scripts/prod.sh logs` 会同时显示 Java 与 CSP Paper Studio 日志，日志不包含用户 Markdown 正文。
 
 ### Flyway 报 checksum mismatch
 

@@ -78,7 +78,7 @@ function bindPortalEvents() {
         portalPendingHref = href;
         showPortalAuth('login');
         const hint = portal$('#portalAuthView .auth-hint');
-        if (hint) hint.textContent = '登录后即可进入教师抢答控制台。学生请使用老师提供的加入链接。';
+        if (hint) hint.textContent = button.dataset.authHint || '登录后即可继续使用该工具。';
       }
     };
   });

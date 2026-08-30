@@ -18,16 +18,30 @@
 - 每组数据使用可复现随机种子
 - 标准程序超时、退出码、输入大小检查
 - ZIP 中包含题面、标准程序、生成器、测试数据和 `manifest.json`
+- CSP Paper Studio V0.4：登录后可逐题检查 CSP 初赛 Markdown、实时编辑并导出 Word
 
 ## 启动
 
-本地开发需要 Java 17+、Maven 和可从命令行调用的 `g++`。
+本地开发需要 Java 17+、Maven 和可从命令行调用的 `g++`。CSP Paper Studio 还需要 Python 3、Pandoc 3.8.2.1 及其锁定依赖。
+
+先在一个终端启动 CSP Paper Studio 内部服务：
+
+```bash
+cd services/csp-paper-studio
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock.txt
+.venv/bin/python -m uvicorn service_app:app --host 127.0.0.1 --port 8765
+```
+
+再在仓库根目录启动网站：
 
 ```powershell
 mvn spring-boot:run
 ```
 
 然后访问 <http://localhost:8080>。
+
+登录后从“实用工具”进入 CSP Paper Studio。浏览器选择的 Markdown 只发送到当前 DataForge 服务进行解析或导出，不会发送给第三方，也不会写入数据库或长期保存在服务器上。
 
 首次启动会创建默认管理员：
 

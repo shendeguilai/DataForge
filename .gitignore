@@ -5,6 +5,8 @@ target/
 runtime/
 data/
 *.log
+__pycache__/
+*.pyc
 .env
 .DS_Store
 J组能量卡片/

@@ -27,6 +27,13 @@ dataforge:
   process-stack-mb: ${DATAFORGE_PROCESS_STACK_MB:256}
   daily-generation-limit: ${DAILY_GENERATION_LIMIT:30}
   invite-code: ${INVITE_CODE:443322}
+  csp-paper-studio:
+    base-url: ${CSP_STUDIO_BASE_URL:http://127.0.0.1:8765}
+    connect-timeout: 3s
+    analyze-timeout: 15s
+    export-timeout: 180s
+    max-markdown-bytes: 2097152
+    max-word-bytes: 26214400
   atcoder:
     cookie: ${ATCODER_COOKIE:}
   quiz:

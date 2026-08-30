@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="CSP 初赛 Markdown 可视化检查与 Word 导出工具">
+    <title>CSP Paper Studio V0.4 · DataForge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/portal.css">
+    <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/csp-paper-studio.css">
+</head>
+<body class="csp-page">
+<header class="topbar">
+    <a class="brand" href="/" aria-label="DataForge 首页">
+        <span class="brand-mark">D</span>
+        <span>DataForge</span>
+        <small>比赛工具站</small>
+    </a>
+    <nav class="module-nav" aria-label="站点模块">
+        <a href="/">数据工坊</a>
+        <a href="/algorithms.html">算法可视化</a>
+        <a class="active" href="/tools.html">实用工具</a>
+    </nav>
+    <div class="account-actions hidden" id="accountActions">
+        <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
+        <span class="username" id="currentUsername"></span>
+        <button class="logout-btn" id="logoutButton" type="button">退出</button>
+    </div>
+    <div class="account-actions" id="anonymousActions">
+        <button class="ghost-btn" data-portal-auth="login" type="button">登录</button>
+        <button class="ghost-btn" data-portal-auth="register" type="button">注册</button>
+    </div>
+</header>
+
+<main class="csp-studio-shell" id="studioApp">
+    <header class="studio-toolbar">
+        <div class="studio-brand">
+            <div class="studio-brand-mark">C</div>
+            <div>
+                <strong>CSP Paper Studio <small>V0.4</small></strong>
+                <span>Markdown → Word 可视化检查</span>
+            </div>
+        </div>
+        <div class="studio-actions">
+            <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" hidden>
+            <button id="openBtn" class="studio-btn primary" type="button" disabled>打开 MD</button>
+            <button id="sampleBtn" class="studio-btn" type="button" disabled>加载示例</button>
+            <button id="downloadMdBtn" class="studio-btn" type="button" disabled>下载修改后 MD</button>
+            <button id="exportBtn" class="studio-btn success" type="button" disabled>导出 Word</button>
+        </div>
+    </header>
+
+    <div class="studio-privacy" id="studioPrivacy" role="status">
+        <span>文件仅发送到当前 DataForge 服务器解析，不会转交第三方或持久保存。</span>
+        <button id="studioLoginButton" type="button">登录后使用</button>
+    </div>
+
+    <div class="studio-filebar">
+        <div class="studio-filename" id="filename">尚未打开文件</div>
+        <div class="studio-summary" id="summary">登录后打开一个 CSP 初赛 Markdown 文件开始检查。</div>
+        <select id="numbering" title="Word 中阅读/完善程序题号模式" disabled>
+            <option value="auto">题号：自动</option>
+            <option value="global">题号：全局</option>
+            <option value="local">题号：块内</option>
+        </select>
+    </div>
+
+    <section class="csp-workspace empty" id="workspace">
+        <aside class="studio-sidebar">
+            <div class="studio-sidebar-head">
+                <span>题目模块</span>
+                <span class="module-count" id="moduleCount">0</span>
+            </div>
+            <div class="section-filter" id="filters">
+                <button class="filter active" data-filter="all" type="button">全部</button>
+                <button class="filter" data-filter="choice" type="button">选择题</button>
+                <button class="filter" data-filter="reading" type="button">阅读程序</button>
+                <button class="filter" data-filter="fill" type="button">完善程序</button>
+            </div>
+            <div class="module-list" id="moduleList">
+                <div class="empty-side">打开 MD 后，这里会显示每一道题。</div>
+            </div>
+        </aside>
+
+        <section class="preview-pane">
+            <div class="studio-pane-head">
+                <div>
+                    <strong id="previewTitle">实时预览</strong>
+                    <span id="previewMeta">接近最终 Word 的模块效果</span>
+                </div>
+                <div class="status-pill neutral" id="moduleStatus">未加载</div>
+            </div>
+            <div class="issues" id="issues" hidden></div>
+            <div class="paper-wrap">
+                <article class="paper" id="preview">
+                    <div class="empty-preview">
+                        <div class="empty-icon">MD</div>
+                        <h2>打开一份 Markdown 试卷</h2>
+                        <p>左侧会按题目拆成模块；点击任一模块即可单独检查和编辑。</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="editor-pane">
+            <div class="studio-pane-head">
+                <div>
+                    <strong>当前模块 Markdown</strong>
+                    <span id="editorHint">修改后会自动重新解析</span>
+                </div>
+                <button id="restoreBtn" class="studio-btn small" type="button" disabled>恢复本模块</button>
+            </div>
+            <textarea id="editor" spellcheck="false" disabled placeholder="打开文件并选择模块后可编辑"></textarea>
+            <div class="editor-foot">
+                <span id="liveState">实时渲染：开启</span>
+                <span>⌘/Ctrl + S：下载 MD</span>
+            </div>
+        </section>
+    </section>
+</main>
+
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script>
+<script src="/csp-paper-studio.js"></script>
+</body>
+</html>

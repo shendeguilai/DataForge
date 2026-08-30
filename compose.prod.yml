@@ -19,6 +19,7 @@ x-app-environment: &app-environment
   AI_API_KEY: ${AI_API_KEY:-}
   AI_MODEL: ${AI_MODEL:-deepseek-v4-pro}
   ATCODER_COOKIE: ${ATCODER_COOKIE:-}
+  CSP_STUDIO_BASE_URL: ${CSP_STUDIO_BASE_URL:-http://csp-studio:8765}
   QUIZ_COUNTDOWN_SECONDS: ${QUIZ_COUNTDOWN_SECONDS:-3}
   QUIZ_BUZZ_SECONDS: ${QUIZ_BUZZ_SECONDS:-15}
   QUIZ_ROOM_EXPIRY_MINUTES: ${QUIZ_ROOM_EXPIRY_MINUTES:-30}
@@ -59,6 +60,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      csp-studio:
+        condition: service_healthy
     ports:
       - ${PUBLIC_PORT:-8080}:8080
     healthcheck:
@@ -68,6 +74,29 @@ services:
       retries: 12
       start_period: 30s
     stop_grace_period: 45s
+    restart: unless-stopped
+
+  csp-studio:
+    image: dataforge-csp-studio:${DATAFORGE_IMAGE_TAG:-local}
+    build:
+      context: services/csp-paper-studio
+      dockerfile: Dockerfile
+    expose:
+      - "8765"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "2.0"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3))['status']=='UP'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
 
   importer:

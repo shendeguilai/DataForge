@@ -23,11 +23,11 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/", "/index.html", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html",
+                .requestMatchers("/", "/index.html", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html", "/csp-paper-studio.html",
                         "/atcoder.html", "/atcoder-leaderboard.html", "/atcoder-problems.html", "/typing-pk.html", "/quiz-join.html",
                         "/styles.css", "/portal.css", "/hanoi.css", "/fenwick.css", "/atcoder.css", "/atcoder-leaderboard.css", "/atcoder-problems.css", "/typing-pk.css", "/quiz.css",
-                        "/ui-fixes.css", "/auth.css",
-                        "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js", "/atcoder-leaderboard.js", "/atcoder-problems.js", "/typing-pk.js", "/quiz-common.js", "/quiz-join.js",
+                        "/ui-fixes.css", "/auth.css", "/csp-paper-studio.css",
+                        "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js", "/atcoder-leaderboard.js", "/atcoder-problems.js", "/typing-pk.js", "/quiz-common.js", "/quiz-join.js", "/csp-paper-studio.js",
                         "/quiz-cards/**", "/webjars/**", "/error", "/api/tools/atcoder/**", "/ws/tools/typing", "/ws/tools/quiz",
                         "/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()

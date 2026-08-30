@@ -1,5 +1,6 @@
 package cn.datacraft.web;
 
+import cn.datacraft.tools.CspPaperStudioException;
 import org.springframework.http.*;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
@@ -11,6 +12,10 @@ import java.util.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(CspPaperStudioException.class)
+    public ResponseEntity<Map<String, String>> cspPaperStudio(CspPaperStudioException ex) {
+        return error(ex.getStatus(), ex.getMessage());
+    }
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<Map<String, String>> notFound(Exception ex) { return error(HttpStatus.NOT_FOUND, ex.getMessage()); }
     @ExceptionHandler({IllegalStateException.class, IllegalArgumentException.class, MethodArgumentNotValidException.class})
