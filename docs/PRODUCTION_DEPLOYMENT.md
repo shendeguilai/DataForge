@@ -126,9 +126,9 @@ cd /opt/dataforge/app
 导入器会完成以下检查：
 
 1. Flyway 创建空 PostgreSQL 结构。
-2. 确认目标业务表为空，按单事务导入用户、任务、AI 配置、打字文章和种子状态。
-3. 保留 BCrypt 密码哈希与主键，重置 PostgreSQL 用户序列。
-4. 使用旧密钥解密 AI Key，并使用新 `DATAFORGE_SECRET` 重新加密。
+2. 确认目标业务表为空，按单事务导入用户、任务、AI 配置、打字文章、种子状态、AtCoder 排行榜配置、参赛者、Cookie 和题目翻译。
+3. 保留 BCrypt 密码哈希与主键，重置 PostgreSQL 用户、AtCoder 参赛者和题目翻译的自增序列。
+4. 使用旧密钥解密 AI Key 与 AtCoder Cookie，并使用新 `DATAFORGE_SECRET` 重新加密。
 5. 把历史 ZIP 复制到生产 runtime，并把数据库绝对路径改为相对文件名。
 6. 对每张表计算行数和逻辑 SHA-256；校验通过后才提交事务。
 

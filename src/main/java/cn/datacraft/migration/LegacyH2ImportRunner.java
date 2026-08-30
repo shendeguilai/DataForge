@@ -50,7 +50,15 @@ public class LegacyH2ImportRunner implements ApplicationRunner {
             new TableSpec("ai_config", "id", "id", "base_url", "model", "encrypted_api_key",
                     "daily_generation_limit", "updated_at"),
             new TableSpec("typing_articles", "id", "id", "title", "category", "content"),
-            new TableSpec("typing_article_seed_state", "id", "id", "initialized_at")
+            new TableSpec("typing_article_seed_state", "id", "id", "initialized_at"),
+            new TableSpec("atcoder_leaderboard_config", "id", "id", "contest_id", "display_title",
+                    "official_title", "start_at", "end_at", "tasks_json", "updated_at"),
+            new TableSpec("atcoder_leaderboard_participants", "id", "id", "display_name",
+                    "atcoder_username", "atcoder_username_key", "sort_order", "created_at"),
+            new TableSpec("atcoder_cookie_config", "id", "id", "encrypted_cookie", "updated_at"),
+            new TableSpec("atcoder_problem_translations", "id", "id", "contest_id", "task_id", "task_label",
+                    "task_name", "task_order", "source_html", "translated_html", "draft_html", "status",
+                    "error_message", "source_fetched_at", "translated_at", "updated_at")
     );
 
     private final DataSource targetDataSource;
@@ -128,7 +136,7 @@ public class LegacyH2ImportRunner implements ApplicationRunner {
                         throw new IllegalStateException("表 " + table.name + " 迁移后行数或哈希不一致");
                     }
                 }
-                resetUserSequence(target);
+                resetIdentitySequences(target);
                 insertImportMarker(target, sourceSha, counts, hashes);
                 target.commit();
                 System.out.println("H2 全量迁移完成，source_sha256=" + sourceSha + "，rows=" + mapper.writeValueAsString(counts));
@@ -226,9 +234,9 @@ public class LegacyH2ImportRunner implements ApplicationRunner {
                 value = result.getObject(column);
             }
 
-            if (source && "ai_config".equals(table.name) && "encrypted_api_key".equals(column) && value != null) {
+            if (source && isEncryptedSecretColumn(table.name, column) && value != null) {
                 if (oldSecret == null || oldSecret.length() < 16) {
-                    throw new IllegalArgumentException("数据库包含 AI Key，必须提供 LEGACY_DATAFORGE_SECRET");
+                    throw new IllegalArgumentException("数据库包含加密配置，必须提供 LEGACY_DATAFORGE_SECRET");
                 }
                 value = cipher.reencryptFrom(value.toString(), oldSecret);
             }
@@ -278,11 +286,17 @@ public class LegacyH2ImportRunner implements ApplicationRunner {
         }
     }
 
-    private void resetUserSequence(Connection target) throws SQLException {
+    private void resetIdentitySequences(Connection target) throws SQLException {
+        resetIdentitySequence(target, "user_accounts");
+        resetIdentitySequence(target, "atcoder_leaderboard_participants");
+        resetIdentitySequence(target, "atcoder_problem_translations");
+    }
+
+    private void resetIdentitySequence(Connection target, String table) throws SQLException {
         try (PreparedStatement statement = target.prepareStatement(
-                "SELECT setval(pg_get_serial_sequence('user_accounts', 'id'), " +
-                        "COALESCE((SELECT MAX(id) FROM user_accounts), 1), " +
-                        "EXISTS(SELECT 1 FROM user_accounts))")) {
+                "SELECT setval(pg_get_serial_sequence('" + table + "', 'id'), " +
+                        "COALESCE((SELECT MAX(id) FROM " + table + "), 1), " +
+                        "EXISTS(SELECT 1 FROM " + table + "))")) {
             statement.execute();
         }
     }
@@ -314,12 +328,20 @@ public class LegacyH2ImportRunner implements ApplicationRunner {
 
     private static boolean isInstantColumn(String table, String column) {
         return "created_at".equals(column) || "updated_at".equals(column) ||
+                "start_at".equals(column) || "end_at".equals(column) ||
+                "source_fetched_at".equals(column) || "translated_at".equals(column) ||
                 ("legacy_imports".equals(table) && "imported_at".equals(column));
     }
 
     private static boolean isTextColumn(String column) {
         return Arrays.asList("error", "statement", "standard_code", "requirements", "plan_json",
-                "encrypted_api_key", "content", "artifact_path").contains(column);
+                "encrypted_api_key", "encrypted_cookie", "content", "artifact_path", "tasks_json",
+                "source_html", "translated_html", "draft_html", "error_message").contains(column);
+    }
+
+    private static boolean isEncryptedSecretColumn(String table, String column) {
+        return ("ai_config".equals(table) && "encrypted_api_key".equals(column)) ||
+                ("atcoder_cookie_config".equals(table) && "encrypted_cookie".equals(column));
     }
 
     private static void updateDigest(MessageDigest digest, List<Object> values) {
