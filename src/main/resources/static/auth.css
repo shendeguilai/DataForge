@@ -1,1 +1,39 @@
-.account-actions{display:flex;align-items:center;gap:10px}.account-actions .ghost-btn{font-size:12px;text-decoration:none}.username{font-size:12px;font-weight:700}.logout-btn{border:0;background:none;color:var(--muted);font-size:12px;cursor:pointer}.auth-view{position:fixed;inset:0;z-index:50;background:rgba(20,33,25,.46);backdrop-filter:blur(4px);display:grid;place-items:center;padding:22px}.auth-card{position:relative;width:min(430px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:34px;box-shadow:var(--shadow)}.auth-close{position:absolute;right:16px;top:13px;border:0;background:transparent;color:var(--muted);font-size:25px;line-height:1;cursor:pointer}.auth-brand{justify-content:center;margin-bottom:12px}.auth-hint{text-align:center;color:var(--muted);font-size:12px;margin:0 0 22px}.auth-tabs{display:grid;grid-template-columns:1fr 1fr;background:#eeeee6;border-radius:9px;padding:4px;margin-bottom:25px}.auth-tabs button{border:0;background:transparent;padding:10px;border-radius:7px;color:var(--muted);cursor:pointer}.auth-tabs button.active{background:white;color:var(--ink);font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.06)}.auth-form h2{font:500 29px Georgia,"Songti SC",serif;margin:0 0 7px}.auth-form>p{color:var(--muted);font-size:12px;margin:0 0 22px}.auth-form label{display:grid;gap:7px;font-size:12px;color:var(--muted);margin-top:14px}.auth-form input{border:1px solid var(--line);background:#faf9f4;border-radius:9px;padding:12px;outline:none}.auth-form .wide{margin-top:24px}.auth-card .error-box{margin-bottom:0}
+.account-actions .ghost-btn { text-decoration: none; }
+.auth-card {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 30px;
+  border: 1px solid var(--df-border);
+  border-radius: 16px;
+  background: var(--df-surface);
+  box-shadow: 0 20px 55px rgba(24, 33, 43, .18);
+}
+.auth-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--df-text-muted);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+.auth-close:hover { background: var(--df-surface-muted); color: var(--df-text); }
+.auth-brand { justify-content: center; margin-bottom: 12px; }
+.auth-hint { margin: 0 0 20px; color: var(--df-text-muted); text-align: center; font-size: 12px; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 24px; padding: 4px; border-radius: 10px; background: var(--df-surface-muted); }
+.auth-tabs button { min-height: 40px; border: 0; border-radius: 7px; background: transparent; color: var(--df-text-muted); cursor: pointer; font-size: 13px; }
+.auth-tabs button.active { background: var(--df-surface); color: var(--df-brand-hover); font-weight: 700; box-shadow: 0 2px 8px rgba(28, 49, 70, .08); }
+.auth-form h2 { margin: 0 0 7px; font: 500 28px/1.2 Georgia, "Songti SC", serif; }
+.auth-form > p { margin: 0 0 20px; color: var(--df-text-muted); font-size: 12px; }
+.auth-form label { display: grid; gap: 7px; margin-top: 14px; color: var(--df-text-muted); font-size: 12px; }
+.auth-form input { width: 100%; }
+.auth-form .wide { margin-top: 22px; }
+.auth-card .error-box { margin-bottom: 0; }
+.password-card .result-kicker { margin-bottom: 12px; }
+.password-card .auth-form > p strong { color: var(--df-text); }
+@media (max-width: 600px) { .auth-view { padding: 12px; } .auth-card { padding: 24px 18px; } .auth-brand, .auth-tabs button { min-height: 44px; } }

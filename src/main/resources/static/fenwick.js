@@ -106,8 +106,8 @@ function renderBoard(prefix, scene, onPick) {
 }
 
 function renderRangeDiagram() {
-  const tones = ['#fff0b8', '#e4f2d8', '#fff0b8', '#dcecf8', '#fff0b8', '#e4f2d8', '#fff0b8', '#e8ddf7'];
-  const lines = ['#f5a400', '#4f9d31', '#f5a400', '#2e93d6', '#f5a400', '#4f9d31', '#f5a400', '#8752c7'];
+  const tones = ['#fff0b8', '#DCEAF6', '#fff0b8', '#dcecf8', '#fff0b8', '#DCEAF6', '#fff0b8', '#e8ddf7'];
+  const lines = ['#f5a400', '#3F6F9F', '#f5a400', '#2e93d6', '#f5a400', '#3F6F9F', '#f5a400', '#8752c7'];
   const rows = [
     {
       label: '下标 i',
@@ -167,7 +167,7 @@ function renderAddDiagram(options = {}) {
   const completed = options.completed ?? [];
   const current = options.current ?? null;
   const k = options.k ?? Number(bit$('#addDeltaInput')?.value || 3);
-  const lines = ['#f5a400', '#4f9d31', '#f5a400', '#2e93d6', '#f5a400', '#4f9d31', '#f5a400', '#8752c7'];
+  const lines = ['#f5a400', '#3F6F9F', '#f5a400', '#2e93d6', '#f5a400', '#3F6F9F', '#f5a400', '#8752c7'];
   const axis = `<div class="range-axis">
     <div class="range-row-label">下标</div>
     <div class="range-axis-track">${Array.from({length: bitN}, (_, idx) => `<span>${idx + 1}</span>`).join('')}</div>
@@ -219,7 +219,7 @@ function renderQueryDiagram(options = {}) {
   const path = options.path ?? queryPath(x);
   const completed = options.completed ?? [];
   const current = options.current ?? null;
-  const lines = ['#f5a400', '#4f9d31', '#f5a400', '#2e93d6', '#f5a400', '#4f9d31', '#f5a400', '#8752c7'];
+  const lines = ['#f5a400', '#3F6F9F', '#f5a400', '#2e93d6', '#f5a400', '#3F6F9F', '#f5a400', '#8752c7'];
   const axis = `<div class="range-axis">
     <div class="range-row-label">前缀</div>
     <div class="range-axis-track">

@@ -69,7 +69,7 @@
 }
 
 .problem-button{display:flex;align-items:center;gap:8px;height:44px;border:1px solid var(--green);border-radius:8px;background:var(--green);color:white;padding:0 14px;text-decoration:none;white-space:nowrap;transition:.2s}
-.problem-button:hover{background:#173f2d}.problem-button span{display:grid;width:24px;height:24px;place-items:center;border-radius:5px;background:var(--lime);color:var(--ink);font-size:11px;font-weight:900}.problem-button b{font-size:10px}.problem-button.disabled{border-color:var(--line);background:#e7e9e3;color:#8d958f;pointer-events:none}.problem-button.disabled span{background:#d7dad4;color:#8d958f}.problem-button.running span{animation:pulse 1.5s ease-in-out infinite}
+.problem-button:hover{background:var(--df-brand-hover)}.problem-button span{display:grid;width:24px;height:24px;place-items:center;border-radius:5px;background:var(--lime);color:var(--ink);font-size:11px;font-weight:900}.problem-button b{font-size:10px}.problem-button.disabled{border-color:var(--line);background:#e7e9e3;color:#8d958f;pointer-events:none}.problem-button.disabled span{background:#d7dad4;color:#8d958f}.problem-button.running span{animation:pulse 1.5s ease-in-out infinite}
 
 .sync-state {
   display: flex;
@@ -113,7 +113,7 @@
 
 .refresh-button span { font-size: 19px; }
 .refresh-button b { font-size: 11px; }
-.refresh-button:hover { background: #173f2d; }
+.refresh-button:hover { background: var(--df-brand-hover); }
 .refresh-button:disabled { opacity: .58; cursor: wait; }
 
 .notice-strip {
@@ -324,3 +324,12 @@
   .board-pagination { gap: 5px; padding-inline: 8px; }
   .board-pagination button { min-width: 30px; height: 31px; }
 }
+
+.leaderboard-body { background: var(--df-bg); background-image: none; color: var(--df-text); }
+.leaderboard-main { width: min(1180px, 100%); min-width: 0; padding-inline: 0; }
+.leaderboard-heading, .leaderboard-summary, .board-toolbar, .leaderboard-card { min-width: 0; }
+.leaderboard-scroll { max-width: 100%; overflow-x: auto; }
+.contest-state, .problem-button b, #countdownLabel,
+.leaderboard-summary span, .leaderboard-summary small,
+.board-title p, #pageSummary { font-size: 11px; }
+.leaderboard-summary > div > strong > small { font-size: 11px; }

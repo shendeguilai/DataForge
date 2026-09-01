@@ -82,8 +82,14 @@ function bind() {
   $a('#copyManualTranslationTemplate').onclick = fillManualTranslationTemplate;
   $a('#importManualTranslation').onclick = importManualTranslation;
   $a('#retranslateEditorTask').onclick = () => retryProblemTranslation(translationEditorTaskId, true);
-  $a('#closeJobDetail').onclick = () => $a('#jobDetailModal').classList.add('hidden');
-  $a('#closeJobDetailX').onclick = () => $a('#jobDetailModal').classList.add('hidden');
+  $a('#closeJobDetail').onclick = () => {
+    if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog($a('#jobDetailModal'));
+    else $a('#jobDetailModal').classList.add('hidden');
+  };
+  $a('#closeJobDetailX').onclick = () => {
+    if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog($a('#jobDetailModal'));
+    else $a('#jobDetailModal').classList.add('hidden');
+  };
   $a('#adminChangePassword').onclick = showAdminPassword;
   $a('#closeAdminPassword').onclick = hideAdminPassword;
   $a('#adminPasswordForm').onsubmit = changeAdminPassword;
@@ -120,19 +126,21 @@ async function loadUsers() {
     await loadUsers();
   });
   document.querySelectorAll('[data-password-reset]').forEach(b => {
-    b.onclick = () => showResetPassword(Number(b.dataset.passwordReset));
+    b.onclick = () => showResetPassword(Number(b.dataset.passwordReset), b);
   });
 }
 
-function showAdminPassword() {
+function showAdminPassword(event) {
   $a('#adminPasswordForm').reset();
   $a('#adminPasswordError').classList.add('hidden');
-  $a('#adminPasswordModal').classList.remove('hidden');
+  if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog($a('#adminPasswordModal'), event?.currentTarget);
+  else $a('#adminPasswordModal').classList.remove('hidden');
   setTimeout(() => $a('#adminCurrentPassword').focus(), 0);
 }
 
 function hideAdminPassword() {
-  $a('#adminPasswordModal').classList.add('hidden');
+  if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog($a('#adminPasswordModal'));
+  else $a('#adminPasswordModal').classList.add('hidden');
   $a('#adminPasswordError').classList.add('hidden');
 }
 
@@ -164,19 +172,21 @@ async function changeAdminPassword(event) {
   }
 }
 
-function showResetPassword(id) {
+function showResetPassword(id, trigger) {
   const user = adminUsers.find(item => item.id === id);
   if (!user) { toast('用户不存在或列表已刷新'); return; }
   $a('#resetPasswordForm').reset();
   $a('#resetPasswordUserId').value = user.id;
   $a('#resetPasswordUsername').textContent = user.username;
   $a('#resetPasswordError').classList.add('hidden');
-  $a('#resetPasswordModal').classList.remove('hidden');
+  if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog($a('#resetPasswordModal'), trigger);
+  else $a('#resetPasswordModal').classList.remove('hidden');
   setTimeout(() => $a('#resetNewPassword').focus(), 0);
 }
 
 function hideResetPassword() {
-  $a('#resetPasswordModal').classList.add('hidden');
+  if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog($a('#resetPasswordModal'));
+  else $a('#resetPasswordModal').classList.add('hidden');
   $a('#resetPasswordError').classList.add('hidden');
 }
 
@@ -654,7 +664,8 @@ async function openTranslationEditor(taskId, showManualImport = false) {
     $a('#manualTranslationText').value = '';
     $a('#translationManualImport').open = showManualImport || !detail.sourceHtml;
     $a('#translationEditorError').classList.add('hidden');
-    $a('#translationEditorModal').classList.remove('hidden');
+    if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog($a('#translationEditorModal'));
+    else $a('#translationEditorModal').classList.remove('hidden');
   } catch (error) {
     toast(error.message);
   }
@@ -702,7 +713,8 @@ async function importManualTranslation() {
 }
 
 function closeTranslationEditor() {
-  $a('#translationEditorModal').classList.add('hidden');
+  if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog($a('#translationEditorModal'));
+  else $a('#translationEditorModal').classList.add('hidden');
   translationEditorTaskId = '';
   translationEditorInitialHtml = '';
 }
@@ -944,7 +956,8 @@ function showJobDetail(id) {
     : '<p class="empty">暂无规划分组</p>';
   $a('#jobDetailError').textContent = job.error || '';
   $a('#jobDetailError').classList.toggle('hidden', !job.error);
-  $a('#jobDetailModal').classList.remove('hidden');
+  if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog($a('#jobDetailModal'));
+  else $a('#jobDetailModal').classList.remove('hidden');
 }
 
 function esc(v = '') { const d = document.createElement('div'); d.textContent = v; return d.innerHTML; }
@@ -967,5 +980,8 @@ async function copyTargetText(targetId) {
   }
   toast('已复制到剪贴板');
 }
-function toast(m) { const e = $a('#adminToast'); e.textContent = m; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 2500); }
+function toast(m) {
+  if (window.DataForgeUI?.toast) window.DataForgeUI.toast(m, {duration: 2500});
+  else { const e = $a('#adminToast'); e.textContent = m; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 2500); }
+}
 init();

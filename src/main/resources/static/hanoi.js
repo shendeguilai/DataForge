@@ -7,7 +7,7 @@ const hanoi = {
   autoIndex: 0,
   timer: null,
   running: false,
-  colors: ['#ef6c65', '#f2b84b', '#d7ef72', '#56c7e8', '#45c5a0', '#7c74e8', '#b9b4ff', '#f08cc6']
+  colors: ['#ef6c65', '#f2b84b', '#A7C7E3', '#56c7e8', '#6F95BA', '#7c74e8', '#b9b4ff', '#f08cc6']
 };
 
 const hanoi$ = (selector) => document.querySelector(selector);

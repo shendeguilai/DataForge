@@ -46,12 +46,12 @@ function bindTypingEvents() {
     typingState.user = event.detail;
     if (!typingState.room) typing$('#guestDisplayName').value = event.detail?.username || '';
   });
-  typing$('#createRoomButton').onclick = () => {
+  typing$('#createRoomButton').onclick = (event) => {
     if (!typingState.user) {
       typingToast('请先登录或注册，再创建房间。');
       return;
     }
-    openModal(typing$('#createRoomModal'));
+    openModal(typing$('#createRoomModal'), event.currentTarget);
     setTimeout(() => typing$('#newRoomName').focus(), 0);
   };
   typing$('#refreshRoomsButton').onclick = () => loadRooms();
@@ -630,7 +630,7 @@ function renderResult(battle) {
   const icon = battle.finishReason === 'MANUAL' ? '■' : battle.winnerId ? '🏆' : '🤝';
   const duration = formatDuration(Math.max(battle.left.elapsedMillis, battle.right.elapsedMillis));
   const confetti = neutral ? '' : Array.from({length: 20}, (_, index) => {
-    const colors = ['#ff665f', '#27b8ad', '#d9f450', '#ffffff'];
+    const colors = ['#C85C5C', '#5F86AD', '#A7C7E3', '#FFFFFF'];
     return `<i class="confetti" style="--confetti-x:${3 + (index * 17) % 94}%;--confetti-color:${colors[index % colors.length]};--confetti-delay:${(index % 6) * .08}s"></i>`;
   }).join('');
   strip.innerHTML = `${confetti}<div class="result-main"><span>${icon}</span><div><strong>${escapeHtml(winnerText)}</strong><br><small>${finishReasonLabel(battle.finishReason)} · ${duration}</small></div></div>
@@ -992,19 +992,24 @@ async function typingApi(url, options = {}) {
 }
 
 function setButtonBusy(button, busy, busyLabel) {
-  if (!button) return;
-  const label = button.querySelector('span');
-  if (!button.dataset.label && label) button.dataset.label = label.textContent;
-  button.disabled = busy;
-  if (label) label.textContent = busy ? busyLabel : button.dataset.label;
+  if (window.DataForgeUI?.setBusy) window.DataForgeUI.setBusy(button, busy, busyLabel);
+  else {
+    if (!button) return;
+    const label = button.querySelector('span');
+    if (!button.dataset.label && label) button.dataset.label = label.textContent;
+    button.disabled = busy;
+    if (label) label.textContent = busy ? busyLabel : button.dataset.label;
+  }
 }
 
-function openModal(modal) {
-  modal.classList.remove('hidden');
+function openModal(modal, trigger) {
+  if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog(modal, trigger);
+  else modal.classList.remove('hidden');
 }
 
 function closeModal(modal) {
-  modal?.classList.add('hidden');
+  if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog(modal);
+  else modal?.classList.add('hidden');
 }
 
 function saveRoomSession(roomId, token, displayName) {
@@ -1057,11 +1062,14 @@ function commonPrefixLength(left, right) {
 }
 
 function typingToast(message) {
-  const toast = typing$('#toast');
-  toast.textContent = message || '操作失败';
-  toast.classList.add('show');
-  clearTimeout(typingToast.timer);
-  typingToast.timer = setTimeout(() => toast.classList.remove('show'), 2800);
+  if (window.DataForgeUI?.toast) window.DataForgeUI.toast(message || '操作失败', {duration: 2800});
+  else {
+    const toast = typing$('#toast');
+    toast.textContent = message || '操作失败';
+    toast.classList.add('show');
+    clearTimeout(typingToast.timer);
+    typingToast.timer = setTimeout(() => toast.classList.remove('show'), 2800);
+  }
 }
 
 function escapeHtml(value) {

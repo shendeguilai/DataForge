@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DataForge 后台</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/ui-fixes.css?v=2"><link rel="stylesheet" href="/auth.css"><link rel="stylesheet" href="/admin.css?v=5"></head>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DataForge 后台</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/auth.css"><link rel="stylesheet" href="/admin.css?v=6"><script src="/ui-core.js"></script></head>
 <body class="admin-body">
-<header class="topbar"><a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminChangePassword" type="button">修改密码</button><button class="logout-btn" id="adminLogout" type="button">退出</button></div></header>
+<header class="topbar"><a class="brand" href="/" aria-label="DataForge 首页"><span class="brand-mark">D</span><span>DataForge</span><small>管理后台</small></a><nav class="module-nav" aria-label="站点模块"><a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a></nav><div class="account-actions"><a class="ghost-btn" href="/">返回生成器</a><span class="username" id="adminName"></span><button class="logout-btn" id="adminChangePassword" type="button">修改密码</button><button class="logout-btn" id="adminLogout" type="button">退出</button></div></header>
 <main class="admin-main">
   <section class="admin-hero"><div><div class="eyebrow"><span></span>CONTROL CENTER</div><h1>管理后台</h1><p>管理用户、AI 接口、打字文章、AtCoder 赛事榜单与全站生成任务。</p></div><div class="stats"><div><strong id="userTotal">—</strong><span>用户</span></div><div><strong id="articleTotal">—</strong><span>打字文章</span></div><div><strong id="jobTotal">—</strong><span>任务</span></div><div><strong id="successTotal">—</strong><span>已完成</span></div></div></section>
   <nav class="admin-tabs"><button class="active" data-panel="users">用户管理</button><button data-panel="ai">AI 接口</button><button data-panel="articles">打字文章</button><button data-panel="leaderboard">赛事榜单</button><button data-panel="jobs">生成记录</button></nav>
@@ -48,7 +48,7 @@
             <div class="translation-source-import recommended">
               <div class="translation-import-heading"><div><strong>上传整场 Markdown</strong><small>直接读取结构化题面，锁定公式、代码和样例后逐题翻译。</small></div><span>推荐</span></div>
               <div class="translation-source-controls">
-                <input id="translationMarkdownFile" type="file" accept="text/markdown,.md,.markdown" hidden>
+          <input id="translationMarkdownFile" type="file" aria-label="选择 Markdown 文件" accept="text/markdown,.md,.markdown" hidden>
                 <button class="mini-btn" id="chooseTranslationMarkdown" type="button">选择 Markdown</button>
                 <span id="translationMarkdownName">尚未选择文件</span>
                 <button class="mini-btn participant-save" id="uploadTranslationMarkdown" type="button" disabled>上传并校验</button>
@@ -59,7 +59,7 @@
             <div class="translation-source-import fallback">
               <div class="translation-import-heading"><div><strong>上传整场题面 PDF</strong><small>备用方式；PDF 必须带可选择的文本层，复杂公式需人工核对。</small></div><span>备用</span></div>
               <div class="translation-source-controls">
-                <input id="translationPdfFile" type="file" accept="application/pdf,.pdf" hidden>
+          <input id="translationPdfFile" type="file" aria-label="选择 PDF 文件" accept="application/pdf,.pdf" hidden>
                 <button class="mini-btn" id="chooseTranslationPdf" type="button">选择 PDF</button>
                 <span id="translationPdfName">尚未选择文件</span>
                 <button class="mini-btn participant-save" id="uploadTranslationPdf" type="button" disabled>识别并翻译</button>
@@ -82,7 +82,7 @@
           <summary><span>批量添加选手</span><small>使用 JSON 一次录入多人</small></summary>
           <div class="participant-bulk-body">
             <div class="participant-bulk-heading"><span>JSON DATA</span><button class="text-btn" id="fillParticipantBatchExample" type="button">填入示例</button></div>
-            <textarea id="leaderboardParticipantBatch" rows="9" spellcheck="false" placeholder='[{"realName":"张三","atcoderId":"zhangsan"}]'></textarea>
+          <textarea id="leaderboardParticipantBatch" rows="9" spellcheck="false" aria-label="批量选手 JSON" placeholder='[{"realName":"张三","atcoderId":"zhangsan"}]'></textarea>
             <div class="participant-bulk-footer"><small>字段固定为 realName 和 atcoderId，单次最多 200 人；整批校验通过后才会保存。</small><button class="mini-btn participant-save" id="saveParticipantBatch" type="button">批量添加</button></div>
           </div>
         </details>
@@ -110,7 +110,7 @@
       <summary><span>手动导入中文题面</span><small>AtCoder 题面获取失败时使用</small></summary>
       <div class="translation-manual-body">
         <div class="translation-manual-heading"><p>按【题目描述】等标记填写；样例段会自动转换为可复制的代码块。</p><button class="mini-btn" id="copyManualTranslationTemplate" type="button">填入标准模板</button></div>
-        <textarea id="manualTranslationText" rows="16" spellcheck="false" placeholder="【题目描述】&#10;在这里粘贴中文题面……"></textarea>
+        <textarea id="manualTranslationText" rows="16" spellcheck="false" aria-label="人工译文 Markdown" placeholder="【题目描述】&#10;在这里粘贴中文题面……"></textarea>
         <div class="translation-manual-footer"><span>导入后会立即发布，后续仍可在下方可视化编辑器中修改。</span><button class="mini-btn participant-save" id="importManualTranslation" type="button">导入并发布</button></div>
       </div>
     </details>
@@ -125,7 +125,7 @@
     <div id="translationEditorError" class="error-box hidden"></div>
   </div>
 </section>
-<section id="jobDetailModal" class="modal-view hidden" aria-live="polite">
+<section id="jobDetailModal" class="modal-view hidden" role="dialog" aria-modal="true" aria-labelledby="jobDetailTitle" aria-live="polite">
   <div class="panel result-panel admin-job-detail">
     <button class="modal-x" id="closeJobDetailX" type="button" aria-label="关闭">×</button>
     <button class="close-btn" id="closeJobDetail" type="button">← 关闭详情</button>
@@ -184,4 +184,4 @@
     <div id="resetPasswordError" class="error-box hidden"></div>
   </div>
 </section>
-<div id="adminToast" class="toast"></div><script src="/admin.js?v=5"></script></body></html>
+<div id="adminToast" class="toast"></div><script src="/admin.js?v=6"></script></body></html>

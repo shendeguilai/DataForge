@@ -191,7 +191,7 @@
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--green), #70a86a, var(--lime));
+  background: linear-gradient(90deg, var(--green), #6F95BA, var(--lime));
   transition: width .25s ease;
 }
 
@@ -349,7 +349,7 @@
 
 .hanoi-rules b {
   color: var(--green);
-  font: 800 10px ui-monospace, monospace;
+  font: 800 11px ui-monospace, monospace;
   margin-right: 7px;
 }
 
@@ -521,7 +521,7 @@
 
   .hanoi-disk {
     height: 21px;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .hanoi-rules {
@@ -532,3 +532,12 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Keep the game board expressive while using the shared cool-gray page system. */
+body { background: var(--df-bg); background-image: none; color: var(--df-text); }
+.hanoi-main, .hanoi-shell, .hanoi-hero-card, .hanoi-board-panel, .hanoi-settings, .hanoi-stats { min-width: 0; }
+.hanoi-hero-card { border-color: var(--df-border); background: linear-gradient(135deg, #FFFFFF, #EDF3F8); box-shadow: var(--df-shadow); }
+.hanoi-hero-card::before { opacity: 0; }
+.hanoi-board-panel, .hanoi-status, .hanoi-stats div { border-color: var(--df-border); background: var(--df-surface); }
+.hanoi-note { border-color: #E5C78F; background: #FFF8EA; }
+@media (max-width: 680px) { .hanoi-main { margin-left: 16px; margin-right: 16px; padding-top: 34px; } }

@@ -4,6 +4,10 @@ let selectedTaskId = '';
 let selectedDetail = null;
 let statementLanguage = 'zh';
 let problemPollTimer = null;
+let problemOverviewSequence = 0;
+let problemOverviewAbortController = null;
+let problemDetailSequence = 0;
+let problemDetailAbortController = null;
 
 problem$('#showChinese').onclick = () => setStatementLanguage('zh');
 problem$('#showEnglish').onclick = () => setStatementLanguage('en');
@@ -14,8 +18,8 @@ window.addEventListener('popstate', () => loadProblemOverview(true));
 
 loadProblemOverview(true);
 
-async function problemRequest(url) {
-  const response = await fetch(url);
+async function problemRequest(url, signal) {
+  const response = await fetch(url, signal ? {signal} : undefined);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || `题面读取失败 (${response.status})`);
   return body;
@@ -23,8 +27,12 @@ async function problemRequest(url) {
 
 async function loadProblemOverview(loadTask) {
   clearTimeout(problemPollTimer);
+  const sequence = ++problemOverviewSequence;
+  problemOverviewAbortController?.abort();
+  problemOverviewAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   try {
-    const data = await problemRequest('/api/tools/atcoder-problems');
+    const data = await problemRequest('/api/tools/atcoder-problems', problemOverviewAbortController?.signal);
+    if (sequence !== problemOverviewSequence) return;
     const previousStatus = problemOverview?.tasks?.find(task => task.id === selectedTaskId)?.status;
     problemOverview = data;
     renderOverview();
@@ -43,6 +51,7 @@ async function loadProblemOverview(loadTask) {
     else renderTaskTabs();
     if (data.running) problemPollTimer = setTimeout(() => loadProblemOverview(false), 3000);
   } catch (error) {
+    if (sequence !== problemOverviewSequence || error.name === 'AbortError') return;
     showStatementState(error.message || '题面暂时无法读取，请稍后重试。');
   }
 }
@@ -72,6 +81,9 @@ function renderTaskTabs() {
 }
 
 async function selectTask(taskId, pushHistory) {
+  const sequence = ++problemDetailSequence;
+  problemDetailAbortController?.abort();
+  problemDetailAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   selectedTaskId = taskId;
   selectedDetail = null;
   renderTaskTabs();
@@ -81,12 +93,12 @@ async function selectTask(taskId, pushHistory) {
   if (pushHistory) history.pushState(null, '', `?task=${encodeURIComponent(taskId)}`);
   else history.replaceState(null, '', `?task=${encodeURIComponent(taskId)}`);
   try {
-    selectedDetail = await problemRequest(`/api/tools/atcoder-problems/${encodeURIComponent(taskId)}`);
-    if (selectedTaskId !== taskId) return;
+    selectedDetail = await problemRequest(`/api/tools/atcoder-problems/${encodeURIComponent(taskId)}`, problemDetailAbortController?.signal);
+    if (sequence !== problemDetailSequence || selectedTaskId !== taskId) return;
     renderTaskHeader(selectedDetail.task);
     renderStatement();
   } catch (error) {
-    if (selectedTaskId === taskId) showStatementState(error.message || '这道题暂时无法读取。');
+    if (sequence === problemDetailSequence && selectedTaskId === taskId && error.name !== 'AbortError') showStatementState(error.message || '这道题暂时无法读取。');
   }
 }
 

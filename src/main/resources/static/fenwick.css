@@ -13,7 +13,7 @@
   height: var(--h);
   min-height: 34px;
   border-radius: 12px 12px 6px 6px;
-  background: linear-gradient(180deg, var(--green), #6aa771);
+  background: linear-gradient(180deg, var(--green), #6F95BA);
   color: white;
   display: grid;
   place-items: end center;
@@ -189,7 +189,7 @@
 
 .code-block span.active {
   background: rgba(215, 239, 114, .18);
-  color: #f2ffd0;
+  color: #E7F0F7;
 }
 
 .visual-demo {
@@ -629,7 +629,7 @@
 
 .bit-cell.cover {
   background: #eff8d4;
-  border-color: #b9d765;
+  border-color: #A7C7E3;
 }
 
 .bit-cell.visit {
@@ -655,8 +655,8 @@
 }
 
 .diff-row .bit-cell.visit {
-  background: #8ab657;
-  border-color: #8ab657;
+  background: #6F95BA;
+  border-color: #6F95BA;
 }
 
 .bit-range-line {
@@ -740,4 +740,19 @@
   .bit-cell span {
     font-size: 14px;
   }
+
+  .range-cell {
+    min-height: 44px;
+  }
+}
+
+/* Lecture layout must shrink with the viewport; only the intentionally wide maps scroll. */
+body { background: var(--df-bg); background-image: none; color: var(--df-text); }
+.lesson-main, .lesson-hero, .lesson-layout, .lesson-content, .lesson-section, .visual-demo, .visual-grid, .visual-heading { min-width: 0; }
+.lesson-section, .lesson-summary-card { border-color: var(--df-border); background: var(--df-surface); }
+.lesson-callout { background: var(--df-surface-muted); }
+.range-map, .add-map, .query-map, .range-summary-grid { max-width: 100%; overflow-x: auto; }
+@media (max-width: 620px) {
+  .lesson-main { margin-left: 16px; margin-right: 16px; }
+  .lesson-section, .visual-demo { padding: 20px 16px; }
 }

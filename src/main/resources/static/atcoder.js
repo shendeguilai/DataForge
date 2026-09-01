@@ -5,6 +5,9 @@ const usernameInput = atcoder$('#atcoderUsername');
 const queryButton = atcoder$('#queryButton');
 const statusPanel = atcoder$('#statusPanel');
 const resultPanel = atcoder$('#resultPanel');
+let atcoderSequence = 0;
+let atcoderAbortController = null;
+let hasSuccessfulResults = false;
 
 form?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -30,38 +33,45 @@ async function queryAtcoder(rawUsername) {
     return;
   }
 
+  const sequence = ++atcoderSequence;
+  atcoderAbortController?.abort();
+  atcoderAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   localStorage.setItem('dataforge.atcoder.user', username);
   history.replaceState(null, '', `?user=${encodeURIComponent(username)}`);
   setLoading(true);
-  showStatus(`<strong>正在查询 ${escapeHtml(username)}</strong><br>正在拉取最近参赛记录、题目资源和赛时提交。`, false);
-  resultPanel.classList.add('hidden');
-  resultPanel.innerHTML = '';
+  showStatus(`正在查询 ${username}\n正在拉取最近参赛记录、题目资源和赛时提交。`, false);
 
   try {
-    const response = await fetch(`/api/tools/atcoder/${encodeURIComponent(username)}`);
+    const response = await fetch(`/api/tools/atcoder/${encodeURIComponent(username)}`, {signal: atcoderAbortController?.signal});
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload.error || `查询失败：HTTP ${response.status}`);
     }
+    if (sequence !== atcoderSequence) return;
     renderResults(payload);
+    hasSuccessfulResults = true;
     statusPanel.classList.add('hidden');
   } catch (error) {
+    if (sequence !== atcoderSequence || error.name === 'AbortError') return;
     showStatus(error.message || '查询失败，请稍后重试。', true);
+    if (!hasSuccessfulResults) resultPanel.classList.add('hidden');
   } finally {
-    setLoading(false);
+    if (sequence === atcoderSequence) setLoading(false);
   }
 }
 
 function setLoading(loading) {
   if (!queryButton) return;
-  queryButton.disabled = loading;
-  queryButton.querySelector('span').textContent = loading ? '查询中' : '查询';
+  if (window.DataForgeUI?.setBusy) window.DataForgeUI.setBusy(queryButton, loading, loading ? '查询中' : undefined);
+  else queryButton.disabled = loading;
+  const label = queryButton.querySelector('span');
+  if (label && !window.DataForgeUI) label.textContent = loading ? '查询中' : '查询';
 }
 
 function showStatus(message, isError) {
   statusPanel.classList.remove('hidden');
   statusPanel.classList.toggle('error-box', Boolean(isError));
-  statusPanel.innerHTML = message;
+  statusPanel.textContent = message;
 }
 
 function renderResults(data) {

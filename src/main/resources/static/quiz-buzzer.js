@@ -264,11 +264,15 @@ async function kickMember(memberId) {
 function openQuestionPicker() {
   teacher$('#questionSearchInput').value = '';
   renderQuestionPicker();
-  teacher$('#questionPickerModal').classList.remove('hidden');
+  if (window.DataForgeUI?.openDialog) window.DataForgeUI.openDialog(teacher$('#questionPickerModal'), teacher$('#chooseQuestionButton'));
+  else teacher$('#questionPickerModal').classList.remove('hidden');
   setTimeout(() => teacher$('#questionSearchInput').focus(), 0);
 }
 
-function closeQuestionPicker() { teacher$('#questionPickerModal').classList.add('hidden'); }
+function closeQuestionPicker() {
+  if (window.DataForgeUI?.closeDialog) window.DataForgeUI.closeDialog(teacher$('#questionPickerModal'));
+  else teacher$('#questionPickerModal').classList.add('hidden');
+}
 
 function renderQuestionPicker() {
   const query = teacher$('#questionSearchInput').value.trim().toLowerCase();

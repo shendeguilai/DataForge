@@ -256,3 +256,20 @@
 
 @media(max-width:760px){.translation-reference-grid{grid-template-columns:1fr}.translation-reference-content{height:190px}.translation-editor-modal{max-height:100vh}.translation-editor-footer,.translation-manual-heading,.translation-manual-footer{align-items:stretch;flex-direction:column}.translation-editor-footer>div{flex-wrap:wrap}.translation-editable{min-height:280px}}
 @media(max-width:620px){.translation-task-row{grid-template-columns:26px minmax(0,1fr) auto}.translation-row-actions{grid-column:2/4;justify-content:flex-start;padding-bottom:8px}.translation-editor-heading{align-items:flex-start}.translation-editor-heading>strong{padding-top:8px}.translation-editor-toolbar{align-items:flex-start;flex-direction:column}}
+
+body.admin-body { background: var(--df-bg); background-image: none; color: var(--df-text); }
+.admin-main, .admin-hero, .admin-panel, .article-manager, .leaderboard-admin-grid, .table-wrap { min-width: 0; }
+.admin-panel { border-color: var(--df-border); background: var(--df-surface); }
+.table-wrap { max-width: 100%; overflow-x: auto; }
+.table-wrap table { min-width: 760px; }
+.admin-tabs { max-width: 100%; overflow-x: auto; padding-bottom: 4px; }
+.badge, .contest-task-list span, .translation-task-row > b { background: var(--df-surface-muted); color: var(--df-brand-hover); }
+.quota-input, .settings-form input, .leaderboard-config-form, .leaderboard-participants,
+.translation-reference-grid > section, .translation-editor-workspace { border-color: var(--df-border); background: var(--df-surface); }
+.atcoder-cookie-manager, .translation-manual-import { border-color: var(--df-border); background: var(--df-surface-muted); }
+.translation-source-import, .translation-source-import.recommended { border-color: var(--df-border); background: linear-gradient(135deg, var(--df-surface-muted), var(--df-surface)); }
+.translation-import-heading > span, .translation-import-receipt.uploaded, .translation-ai-state.ready { border-color: #B9CDE0; background: #E7EFF7; color: var(--df-brand-hover); }
+.translation-import-receipt { border-color: var(--df-border); }
+.translation-reference-content pre, .translation-editable pre { background: var(--df-surface-muted); }
+.translation-editable:focus, .participant-bulk textarea:focus, .translation-manual-body textarea:focus { box-shadow: 0 0 0 3px rgba(63,111,159,.12); }
+@media (max-width: 680px) { .admin-main { margin-left: 16px; margin-right: 16px; padding-top: 32px; } .admin-panel { padding: 18px 14px; } }

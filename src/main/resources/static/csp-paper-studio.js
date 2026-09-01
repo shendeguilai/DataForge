@@ -19,6 +19,10 @@
   };
 
   function toast(message) {
+    if (window.DataForgeUI?.toast) {
+      window.DataForgeUI.toast(message, {duration: 2200});
+      return;
+    }
     els.toast.textContent = message;
     els.toast.classList.add('show');
     clearTimeout(toast.timer);

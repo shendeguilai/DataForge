@@ -19,12 +19,15 @@ async function quizRequest(url, options = {}) {
 }
 
 function quizToast(message) {
-  const toast = document.querySelector('#toast');
-  if (!toast) return;
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(quizToast.timer);
-  quizToast.timer = setTimeout(() => toast.classList.remove('show'), 2600);
+  if (window.DataForgeUI?.toast) window.DataForgeUI.toast(message, {duration: 2600});
+  else {
+    const toast = document.querySelector('#toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(quizToast.timer);
+    quizToast.timer = setTimeout(() => toast.classList.remove('show'), 2600);
+  }
 }
 
 function quizStateLabel(state) {

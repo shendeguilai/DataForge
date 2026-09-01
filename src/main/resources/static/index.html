@@ -7,8 +7,8 @@
     <title>DataForge · 算法数据工坊</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/portal.css">
-    <link rel="stylesheet" href="/ui-fixes.css?v=2">
     <link rel="stylesheet" href="/auth.css">
+    <script src="/ui-core.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -40,10 +40,11 @@
         <div class="eyebrow"><span></span> AI DATA GENERATOR</div>
         <h1>把题目交给我们，<br><em>把好数据带走。</em></h1>
         <p>粘贴题面、标准程序和数据要求。系统会先规划测试点，再安全地编译、运行并打包。</p>
-        <div class="steps" aria-label="任务步骤">
-            <div class="step active" data-step="1"><b>01</b><span>填写需求</span></div>
-            <div class="step" data-step="2"><b>02</b><span>确认方案</span></div>
-            <div class="step" data-step="3"><b>03</b><span>生成下载</span></div>
+            <div class="steps" aria-label="任务步骤">
+            <div class="step active" data-step="1"><b>01</b><span>编辑需求</span></div>
+            <div class="step" data-step="2"><b>02</b><span>方案确认</span></div>
+            <div class="step" data-step="3"><b>03</b><span>生成中</span></div>
+            <div class="step" data-step="4"><b>04</b><span>已完成</span></div>
         </div>
     </section>
 
@@ -110,12 +111,12 @@
         </aside>
     </section>
 
-    <section id="planView" class="modal-view hidden" aria-live="polite">
+    <section id="planView" class="modal-view hidden" role="dialog" aria-modal="true" aria-labelledby="planTitle" aria-live="polite">
         <div class="panel result-panel">
             <button class="modal-x" id="closePlanView" type="button" aria-label="关闭">×</button>
             <button class="close-btn" id="backToEdit" type="button" aria-label="返回修改">← 返回修改</button>
             <div class="result-kicker">DATA PLAN</div>
-            <h2>数据方案已经备好</h2>
+            <h2 id="planTitle">数据方案已经备好</h2>
             <p id="planSummary" class="result-summary"></p>
             <div class="plan-meta"><span>预计体积</span><strong id="estimatedSize">—</strong><span>测试点</span><strong id="plannedCount">—</strong></div>
             <div id="planGroups" class="plan-groups"></div>
@@ -132,7 +133,7 @@
         </div>
     </section>
 
-    <section id="progressView" class="modal-view hidden" aria-live="polite">
+    <section id="progressView" class="modal-view hidden" role="dialog" aria-modal="true" aria-labelledby="progressTitle" aria-live="polite">
         <div class="panel result-panel progress-panel">
             <button class="modal-x" id="closeProgressView" type="button" aria-label="关闭">×</button>
             <div id="statusOrb" class="status-orb"><span>✦</span></div>

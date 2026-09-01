@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/portal.css">
     <link rel="stylesheet" href="/auth.css">
     <link rel="stylesheet" href="/csp-paper-studio.css">
+    <script src="/ui-core.js"></script>
 </head>
 <body class="csp-page">
 <header class="topbar">
@@ -38,12 +39,12 @@
         <div class="studio-brand">
             <div class="studio-brand-mark">C</div>
             <div>
-                <strong>CSP Paper Studio <small>V0.4</small></strong>
+                <h1 class="studio-title">CSP Paper Studio <small>V0.4</small></h1>
                 <span>Markdown → Word 可视化检查</span>
             </div>
         </div>
         <div class="studio-actions">
-            <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" hidden>
+            <input id="fileInput" type="file" aria-label="打开 Markdown 文件" accept=".md,text/markdown,text/plain" hidden>
             <button id="openBtn" class="studio-btn primary" type="button" disabled>打开 MD</button>
             <button id="sampleBtn" class="studio-btn" type="button" disabled>加载示例</button>
             <button id="downloadMdBtn" class="studio-btn" type="button" disabled>下载修改后 MD</button>
@@ -59,7 +60,8 @@
     <div class="studio-filebar">
         <div class="studio-filename" id="filename">尚未打开文件</div>
         <div class="studio-summary" id="summary">登录后打开一个 CSP 初赛 Markdown 文件开始检查。</div>
-        <select id="numbering" title="Word 中阅读/完善程序题号模式" disabled>
+        <label class="sr-only" for="numbering">Word 中阅读/完善程序题号模式</label>
+        <select id="numbering" aria-label="Word 中阅读/完善程序题号模式" title="Word 中阅读/完善程序题号模式" disabled>
             <option value="auto">题号：自动</option>
             <option value="global">题号：全局</option>
             <option value="local">题号：块内</option>
@@ -111,7 +113,7 @@
                 </div>
                 <button id="restoreBtn" class="studio-btn small" type="button" disabled>恢复本模块</button>
             </div>
-            <textarea id="editor" spellcheck="false" disabled placeholder="打开文件并选择模块后可编辑"></textarea>
+            <textarea id="editor" aria-label="当前模块 Markdown" spellcheck="false" disabled placeholder="打开文件并选择模块后可编辑"></textarea>
             <div class="editor-foot">
                 <span id="liveState">实时渲染：开启</span>
                 <span>⌘/Ctrl + S：下载 MD</span>

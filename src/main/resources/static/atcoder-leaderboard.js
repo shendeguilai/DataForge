@@ -1,6 +1,8 @@
 const board$ = selector => document.querySelector(selector);
 const refreshButton = board$('#refreshButton');
 let refreshInFlight = false;
+let leaderboardSequence = 0;
+let leaderboardAbortController = null;
 let countdown = 60;
 let countdownTimer = null;
 let currentPage = 1;
@@ -9,6 +11,8 @@ let currentEntries = [];
 let currentContestId = '';
 let canManualRefresh = false;
 let problemPollTimer = null;
+let problemSequence = 0;
+let problemAbortController = null;
 const PAGE_SIZE = 50;
 
 refreshButton?.addEventListener('click', () => {
@@ -45,40 +49,52 @@ function setManualRefreshAccess(user) {
 }
 
 async function loadLeaderboard(manual) {
-  if (refreshInFlight || document.hidden || (manual && !canManualRefresh)) return;
+  if (document.hidden || (manual && !canManualRefresh)) return;
+  const sequence = ++leaderboardSequence;
+  leaderboardAbortController?.abort();
+  leaderboardAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   refreshInFlight = true;
-  refreshButton.disabled = true;
-  refreshButton.querySelector('b').textContent = '同步中';
+  if (window.DataForgeUI?.setBusy) window.DataForgeUI.setBusy(refreshButton, true, '同步中');
+  else refreshButton.disabled = true;
   try {
     const response = await fetch(manual ? '/api/tools/atcoder-leaderboard/refresh' : '/api/tools/atcoder-leaderboard', {
-      method: manual ? 'POST' : 'GET'
+      method: manual ? 'POST' : 'GET',
+      signal: leaderboardAbortController?.signal
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `排行榜读取失败 (${response.status})`);
+    if (sequence !== leaderboardSequence) return;
     renderLeaderboard(payload);
     loadProblemOverview();
     countdown = payload.refreshCooldownSeconds > 0 ? payload.refreshCooldownSeconds : (payload.refreshAfterSeconds || 60);
     if (manual && payload.refreshCooldownSeconds > 0) showToast(`刷新过于频繁，请等待 ${payload.refreshCooldownSeconds} 秒`);
   } catch (error) {
-    showNotice(error.message || '排行榜暂时无法读取。', true);
-    showBoardState('排行榜读取失败，请稍后重试。');
+    if (sequence !== leaderboardSequence || error.name === 'AbortError') return;
+    showNotice(error.message || '排行榜暂时无法读取，当前仍保留上次成功同步的数据。', true);
+    if (!currentEntries.length) showBoardState('排行榜读取失败，请稍后重试。');
   } finally {
+    if (sequence !== leaderboardSequence) return;
     refreshInFlight = false;
-    refreshButton.disabled = false;
-    refreshButton.querySelector('b').textContent = '手动刷新';
+    if (window.DataForgeUI?.setBusy) window.DataForgeUI.setBusy(refreshButton, false);
+    else refreshButton.disabled = false;
   }
 }
 
 async function loadProblemOverview() {
   clearTimeout(problemPollTimer);
+  const sequence = ++problemSequence;
+  problemAbortController?.abort();
+  problemAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   try {
-    const response = await fetch('/api/tools/atcoder-problems');
+    const response = await fetch('/api/tools/atcoder-problems', {signal: problemAbortController?.signal});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error();
+    if (sequence !== problemSequence) return;
     renderProblemButton(data);
     if (data.running) problemPollTimer = setTimeout(loadProblemOverview, 3000);
-  } catch (_) {
-    renderProblemButton(null);
+  } catch (error) {
+    if (sequence !== problemSequence || error.name === 'AbortError') return;
+    if (!board$('#problemButton')?.classList.contains('running')) showNotice('题面状态暂时无法读取。', true);
   }
 }
 
@@ -272,4 +288,7 @@ function shortElapsed(value) { return String(value || '--:--').replace(/^00:/, '
 function score(value) { return Number(value || 0).toLocaleString('zh-CN', {maximumFractionDigits:2}); }
 function html(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function attr(value) { return html(value || '#'); }
-function showToast(message) { const toast = board$('#toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500); }
+function showToast(message) {
+  if (window.DataForgeUI?.toast) window.DataForgeUI.toast(message, {duration: 2500});
+  else { const toast = board$('#toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500); }
+}

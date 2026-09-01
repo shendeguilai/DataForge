@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/portal.css">
     <link rel="stylesheet" href="/auth.css">
     <link rel="stylesheet" href="/quiz.css">
+    <script src="/ui-core.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -20,7 +21,6 @@
         <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
         <span class="username" id="currentUsername"></span><button class="logout-btn" id="logoutButton" type="button">退出</button>
     </div>
-    <div class="account-actions hidden" id="anonymousActions"></div>
 </header>
 
 <main class="quiz-main">
@@ -104,12 +104,13 @@
     </section>
 </main>
 
-<section class="modal-view hidden" id="questionPickerModal">
+<section class="modal-view hidden" id="questionPickerModal" role="dialog" aria-modal="true" aria-labelledby="questionPickerTitle">
     <div class="panel quiz-picker">
-        <button class="modal-x" id="closeQuestionPicker" type="button">×</button>
+        <button class="modal-x" id="closeQuestionPicker" type="button" aria-label="关闭题目选择器">×</button>
         <div class="eyebrow"><span></span> QUESTION PICKER</div>
-        <h2>指定本轮题目</h2>
-        <input id="questionSearchInput" placeholder="搜索编号、分类或题面">
+        <h2 id="questionPickerTitle">指定本轮题目</h2>
+        <label class="sr-only" for="questionSearchInput">搜索题目</label>
+        <input id="questionSearchInput" aria-label="搜索题目" placeholder="搜索编号、分类或题面">
         <div class="quiz-picker-list" id="questionPickerList"></div>
     </div>
 </section>

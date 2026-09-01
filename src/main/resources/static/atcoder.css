@@ -2,6 +2,12 @@
   padding-top: 46px;
 }
 
+/* Shared shell and surface tokens for the statistics tool. */
+body { background: var(--df-bg); background-image: none; color: var(--df-text); }
+.atcoder-main, .atcoder-shell, .stats-summary, .contest-card { min-width: 0; }
+.atcoder-shell, .contest-card, .stats-summary { border-color: var(--df-border); background: var(--df-surface); box-shadow: var(--df-shadow); }
+.scoreboard-wrap { max-width: 100%; overflow-x: auto; }
+
 .atcoder-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 420px;
