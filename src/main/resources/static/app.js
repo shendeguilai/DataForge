@@ -5,6 +5,12 @@ const UI = window.DataForgeUI || {
   toast: (message) => window.alert(message),
   setBusy: (button, busy, label) => { if (button) { button.disabled = busy; if (label) button.textContent = label; } }
 };
+const navigationUrl = new URL(window.location.href);
+const returnedFromAdmin = navigationUrl.searchParams.get('from') === 'admin';
+if (returnedFromAdmin) {
+  navigationUrl.searchParams.delete('from');
+  history.replaceState(history.state, '', `${navigationUrl.pathname}${navigationUrl.search}${navigationUrl.hash}`);
+}
 const state = {
   jobId: localStorage.getItem('dataforge.activeJob'),
   pollTimer: null,
@@ -12,7 +18,8 @@ const state = {
   requestToken: 0,
   recentToken: 0,
   user: null,
-  progressDismissed: false
+  progressDismissed: false,
+  suppressAutoResume: returnedFromAdmin
 };
 
 const examples = {
@@ -115,7 +122,10 @@ function enterApp(user) {
   if ($('#currentUsername')) $('#currentUsername').textContent = user.username;
   $('#adminLink')?.classList.toggle('hidden', user.role !== 'ADMIN');
   loadRecent();
-  if (state.jobId) resumeJob(state.jobId);
+  const jobId = state.jobId;
+  const shouldResume = Boolean(jobId) && !state.suppressAutoResume;
+  state.suppressAutoResume = false;
+  if (shouldResume) resumeJob(jobId);
 }
 
 function enterAnonymous() {
@@ -345,6 +355,11 @@ async function resumeJob(id) {
   try {
     const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
     if (token !== state.requestToken || state.jobId !== id) return;
+    if (isTerminal(job.status)) {
+      localStorage.removeItem('dataforge.activeJob');
+      state.jobId = null;
+      return;
+    }
     if (job.status === 'WAITING_CONFIRMATION') renderPlan(job);
     else {
       openProgress(job);
@@ -396,6 +411,7 @@ function renderGroups(container, groups) {
 
 function openProgress(job) {
   if (!job) return;
+  if (isTerminal(job.status)) localStorage.removeItem('dataforge.activeJob');
   if (!state.progressDismissed) showView('progress');
   setStep(3);
   renderProgressReview(job);

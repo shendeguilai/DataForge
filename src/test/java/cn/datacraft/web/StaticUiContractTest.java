@@ -75,6 +75,16 @@ class StaticUiContractTest {
         Document document = Jsoup.parse(STATIC_ROOT.resolve("index.html").toFile(), "UTF-8");
         Set<String> ids = document.select("[id]").stream().map(Element::id).collect(Collectors.toSet());
         assertThat(ids).containsAll(INDEX_IDS);
+
+        String appScript = Files.readString(STATIC_ROOT.resolve("app.js"));
+        assertThat(appScript)
+                .contains("suppressAutoResume: returnedFromAdmin")
+                .contains("if (isTerminal(job.status)) localStorage.removeItem('dataforge.activeJob')");
+
+        Document admin = Jsoup.parse(STATIC_ROOT.resolve("admin.html").toFile(), "UTF-8");
+        assertThat(admin.select("a.header-shortcut[href='/?from=admin']"))
+                .as("admin return link suppresses automatic job recovery")
+                .hasSize(1);
     }
 
     @Test

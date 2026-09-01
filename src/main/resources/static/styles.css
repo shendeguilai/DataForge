@@ -114,12 +114,32 @@ a { color: var(--df-brand); }
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
   flex: 0 1 auto;
 }
-.account-actions#anonymousActions, .account-actions.anonymous-actions { gap: 8px; }
 .account-actions .ghost-btn { font-size: 12px; }
 .account-menu-toggle { display: none; }
+.account-actions > .admin-link,
+.account-actions > .header-shortcut {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--df-text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.account-actions > .admin-link:hover,
+.account-actions > .header-shortcut:hover {
+  background: var(--df-selected);
+  color: var(--df-brand-hover);
+}
 .account-menu-panel {
   min-width: 0;
   display: flex;
@@ -145,7 +165,6 @@ a { color: var(--df-brand); }
   color: var(--df-brand-hover);
   box-shadow: inset 0 0 0 1px var(--df-border);
 }
-.account-menu-panel .admin-link { color: var(--df-brand-hover); font-weight: 650; }
 .username {
   min-height: 34px;
   max-width: 120px;
@@ -325,10 +344,11 @@ footer { max-width: 1180px; margin: 0 auto; padding: 22px 0 30px; border-top: 1p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
-@media (max-width: 980px) {
+@media (max-width: 1120px) {
   .topbar { flex-wrap: wrap; gap: 8px 14px; }
   .module-nav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
   .module-nav a { min-height: 38px; }
+  .account-actions { margin-left: auto; }
   .account-actions:not(#anonymousActions) { position: relative; }
   .account-menu-toggle {
     display: inline-flex;
@@ -375,6 +395,7 @@ footer { max-width: 1180px; margin: 0 auto; padding: 22px 0 30px; border-top: 1p
   button, input, select, summary,
   .primary-btn, .ghost-btn, .logout-btn, .text-btn, .close-btn,
   .back-link, .problems-back, .quiz-back, .hanoi-back { min-height: 44px; }
+  .account-actions > .admin-link, .account-actions > .header-shortcut { min-height: 44px; }
   button, .modal-x, .copy-btn { min-width: 44px; }
   .brand small { display: none; }
   .account-actions { gap: 5px; }

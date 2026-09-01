@@ -137,11 +137,12 @@
       if (actions.dataset.accountMenuReady === 'true') return;
       if (actions.id === 'anonymousActions' || actions.classList.contains('anonymous-actions')) return;
       const children = Array.from(actions.children);
-      if (children.length < 2) return;
+      const menuItems = children.filter((child) => !child.matches('.admin-link, .header-shortcut'));
+      if (menuItems.length < 2) return;
       const panel = document.createElement('div');
       panel.className = 'account-menu-panel';
       panel.id = `${actions.id || 'account-menu'}-panel-${Math.random().toString(36).slice(2, 7)}`;
-      children.forEach((child) => panel.appendChild(child));
+      menuItems.forEach((child) => panel.appendChild(child));
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'account-menu-toggle ghost-btn';
@@ -170,7 +171,7 @@
         }
       });
       const closeOnResize = () => {
-        if (window.innerWidth > 980) close();
+        if (window.innerWidth > 1120) close();
       };
       window.addEventListener('resize', closeOnResize, {passive: true});
     });
