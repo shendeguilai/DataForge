@@ -6,6 +6,7 @@ let adminJobs = [];
 let adminArticles = [];
 let leaderboardParticipants = [];
 let leaderboardTranslations = null;
+let selectedAdminContestId = new URLSearchParams(location.search).get('contestId') || '';
 let translationAdminTimer = null;
 let translationEditorTaskId = '';
 let translationEditorInitialHtml = '';
@@ -26,6 +27,13 @@ const manualTranslationTemplate = `【题目描述】
 
 【说明】
 可选；如果没有说明，请删除本段。`;
+
+window.addEventListener('popstate', () => {
+  const contestId = new URLSearchParams(location.search).get('contestId') || '';
+  if (contestId === selectedAdminContestId) return;
+  selectedAdminContestId = contestId;
+  loadSelectedAdminContest();
+});
 
 async function request(url, options = {}) {
   const r = await fetch(url, options);
@@ -58,6 +66,7 @@ function bind() {
   $a('#articleCategoryFilter').onchange = renderArticles;
   $a('#articleContentInput').oninput = updateArticleContentCount;
   $a('#contestConfigForm').onsubmit = saveLeaderboardConfig;
+  $a('#adminContestSelector').onchange = event => selectAdminContest(event.target.value);
   $a('#saveAtcoderCookie').onclick = saveAtcoderCookie;
   $a('#clearAtcoderCookie').onclick = clearAtcoderCookie;
   $a('#leaderboardParticipantForm').onsubmit = saveLeaderboardParticipant;
@@ -373,9 +382,9 @@ async function deleteArticle(id) {
 
 async function loadLeaderboardAdmin() {
   const [config, participants, translations] = await Promise.all([
-    request('/api/admin/atcoder-leaderboard/config'),
+    request(adminContestUrl('/api/admin/atcoder-leaderboard/config')),
     request('/api/admin/atcoder-leaderboard/participants'),
-    request('/api/admin/atcoder-leaderboard/translations')
+    request(adminContestUrl('/api/admin/atcoder-leaderboard/translations'))
   ]);
   renderLeaderboardConfig(config);
   leaderboardParticipants = participants;
@@ -384,6 +393,9 @@ async function loadLeaderboardAdmin() {
 }
 
 function renderLeaderboardConfig(config) {
+  if (config.contestId) selectedAdminContestId = config.contestId;
+  updateAdminContestUrl();
+  renderAdminContestSelector(config.contests || [], config.contestId || '');
   $a('#contestIdInput').value = config.contestId || '';
   $a('#contestTitleInput').value = config.displayTitle || '';
   const cookieLabels = {AVAILABLE: 'Cookie 可用', MISSING: 'Cookie 未配置', INVALID: 'Cookie 已失效'};
@@ -397,6 +409,8 @@ function renderLeaderboardConfig(config) {
     ? `${sourceLabels[source] || source} · 更新于 ${date(config.cookieUpdatedAt)}`
     : (sourceLabels[source] || source);
   $a('#clearAtcoderCookie').classList.toggle('hidden', source !== 'MANAGED');
+  $a('.admin-board-link').href = selectedAdminContestId
+    ? `/atcoder-leaderboard.html?contestId=${encodeURIComponent(selectedAdminContestId)}` : '/atcoder-leaderboard.html';
 
   if (!config.configured) {
     $a('#contestConfigSummary').textContent = '尚未配置比赛。请先填写 Contest ID 并验证保存。';
@@ -412,10 +426,56 @@ function renderLeaderboardConfig(config) {
 
 async function loadLeaderboardTranslations() {
   try {
-    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations'));
+    renderLeaderboardTranslations(await request(adminContestUrl('/api/admin/atcoder-leaderboard/translations')));
   } catch (error) {
     $a('#translationStatusText').textContent = error.message;
   }
+}
+
+function renderAdminContestSelector(contests, selectedId) {
+  const selector = $a('#adminContestSelector');
+  selector.innerHTML = contests.length ? contests.map(contest =>
+    `<option value="${esc(contest.id)}" ${contest.id === selectedId ? 'selected' : ''}>${esc(contest.title || contest.id)} · ${contestStatus(contest.status)}</option>`
+  ).join('') : '<option value="">尚无比赛</option>';
+  selector.disabled = !contests.length;
+}
+
+async function selectAdminContest(contestId) {
+  if (!contestId || contestId === selectedAdminContestId) return;
+  selectedAdminContestId = contestId;
+  updateAdminContestUrl(false);
+  await loadSelectedAdminContest();
+}
+
+async function loadSelectedAdminContest() {
+  clearTimeout(translationAdminTimer);
+  closeTranslationEditor();
+  try {
+    const [config, translations] = await Promise.all([
+      request(adminContestUrl('/api/admin/atcoder-leaderboard/config')),
+      request(adminContestUrl('/api/admin/atcoder-leaderboard/translations'))
+    ]);
+    renderLeaderboardConfig(config);
+    renderLeaderboardTranslations(translations);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function adminContestUrl(path) {
+  if (!selectedAdminContestId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}contestId=${encodeURIComponent(selectedAdminContestId)}`;
+}
+
+function updateAdminContestUrl(replace = true) {
+  const url = new URL(location.href);
+  if (selectedAdminContestId) url.searchParams.set('contestId', selectedAdminContestId);
+  else url.searchParams.delete('contestId');
+  history[replace ? 'replaceState' : 'pushState'](null, '', url);
+}
+
+function contestStatus(status) {
+  return ({UPCOMING:'未开始',RUNNING:'比赛中',FINISHED:'已结束',UNKNOWN:'时间待确认'})[status] || '时间待确认';
 }
 
 function renderLeaderboardTranslations(data) {
@@ -500,7 +560,7 @@ async function startProblemTranslations(force) {
   button.disabled = true;
   try {
     const path = force ? '/api/admin/atcoder-leaderboard/translations/retranslate' : '/api/admin/atcoder-leaderboard/translations';
-    renderLeaderboardTranslations(await request(path, {method: 'POST'}));
+    renderLeaderboardTranslations(await request(adminContestUrl(path), {method: 'POST'}));
     toast(force ? '已开始重新翻译全部题目' : '赛题翻译任务已启动');
   } catch (error) {
     toast(error.message);
@@ -561,7 +621,7 @@ async function uploadTranslationMarkdown() {
   try {
     const body = new FormData();
     body.append('file', file, file.name);
-    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/markdown', {
+    renderLeaderboardTranslations(await request(adminContestUrl('/api/admin/atcoder-leaderboard/translations/markdown'), {
       method: 'POST', body
     }));
     input.value = '';
@@ -583,7 +643,7 @@ async function translateImportedMarkdownAll() {
   const button = $a('#translateImportedMarkdownAll');
   button.disabled = true;
   try {
-    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/markdown/translate', {
+    renderLeaderboardTranslations(await request(adminContestUrl('/api/admin/atcoder-leaderboard/translations/markdown/translate'), {
       method: 'POST'
     }));
     toast(`已开始翻译 ${pending} 道 Markdown 题目`);
@@ -608,7 +668,7 @@ async function uploadTranslationPdf() {
   try {
     const body = new FormData();
     body.append('file', file, file.name);
-    renderLeaderboardTranslations(await request('/api/admin/atcoder-leaderboard/translations/pdf', {
+    renderLeaderboardTranslations(await request(adminContestUrl('/api/admin/atcoder-leaderboard/translations/pdf'), {
       method: 'POST', body
     }));
     input.value = '';
@@ -628,7 +688,7 @@ async function retryProblemTranslation(taskId, askConfirmation) {
   if (askConfirmation && task?.status === 'READY'
       && !confirm(`确定重新翻译 ${task.label || task.name} 吗？成功后会覆盖当前正式译文。`)) return;
   try {
-    renderLeaderboardTranslations(await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`, {method: 'POST'}));
+    renderLeaderboardTranslations(await request(adminContestUrl(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`), {method: 'POST'}));
     closeTranslationEditor();
     toast('该题已重新进入翻译队列');
   } catch (error) {
@@ -638,7 +698,7 @@ async function retryProblemTranslation(taskId, askConfirmation) {
 
 async function openTranslationEditor(taskId, showManualImport = false) {
   try {
-    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`);
+    const detail = await request(adminContestUrl(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(taskId)}`));
     translationEditorTaskId = taskId;
     const task = detail.task || {};
     $a('#translationEditorLabel').textContent = task.label || '?';
@@ -692,7 +752,7 @@ async function importManualTranslation() {
   button.disabled = true;
   errorBox.classList.add('hidden');
   try {
-    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}/manual`, {
+    const detail = await request(adminContestUrl(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}/manual`), {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({content: input.value})
@@ -726,7 +786,7 @@ async function saveTranslationEditor() {
   button.disabled = true;
   errorBox.classList.add('hidden');
   try {
-    const detail = await request(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}`, {
+    const detail = await request(adminContestUrl(`/api/admin/atcoder-leaderboard/translations/${encodeURIComponent(translationEditorTaskId)}`), {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({translatedHtml: $a('#translationEditable').innerHTML})
@@ -755,7 +815,7 @@ async function saveAtcoderCookie() {
     const config = await request('/api/admin/atcoder-leaderboard/cookie', {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({cookie: input.value})
+      body: JSON.stringify({cookie: input.value, contestId: selectedAdminContestId || null})
     });
     input.value = '';
     renderLeaderboardConfig(config);
@@ -773,7 +833,7 @@ async function clearAtcoderCookie() {
   const button = $a('#clearAtcoderCookie');
   button.disabled = true;
   try {
-    const config = await request('/api/admin/atcoder-leaderboard/cookie', {method: 'DELETE'});
+    const config = await request(adminContestUrl('/api/admin/atcoder-leaderboard/cookie'), {method: 'DELETE'});
     $a('#atcoderCookieInput').value = '';
     renderLeaderboardConfig(config);
     toast(config.cookieSource === 'ENVIRONMENT' ? '已切换为系统环境变量 Cookie' : '后台 Cookie 已清除');
@@ -798,9 +858,11 @@ async function saveLeaderboardConfig(event) {
         displayTitle: $a('#contestTitleInput').value
       })
     });
+    selectedAdminContestId = config.contestId || selectedAdminContestId;
+    updateAdminContestUrl();
     renderLeaderboardConfig(config);
     await loadLeaderboardTranslations();
-    toast('比赛已验证并切换，公开榜单可以开始刷新');
+    toast('比赛已验证并保存，其他场次数据已保留');
   } catch (error) {
     toast(error.message);
   } finally {

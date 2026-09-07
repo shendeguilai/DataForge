@@ -2,17 +2,23 @@ package cn.datacraft.atcoder;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 
 @Entity
-@Table(name = "atcoder_leaderboard_config")
+@Table(name = "atcoder_leaderboard_config", uniqueConstraints =
+        @UniqueConstraint(name = "uk_atcoder_leaderboard_config_contest", columnNames = "contest_id"))
 class AtcoderLeaderboardConfig {
-    static final long SINGLETON_ID = 1L;
-
     @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "atcoder_leaderboard_config_seq")
+    @SequenceGenerator(name = "atcoder_leaderboard_config_seq",
+            sequenceName = "atcoder_leaderboard_config_seq", allocationSize = 1, initialValue = 2)
     private Long id;
 
     @Column(name = "contest_id", nullable = false, length = 64)
@@ -40,7 +46,6 @@ class AtcoderLeaderboardConfig {
 
     AtcoderLeaderboardConfig(String contestId, String displayTitle, String officialTitle,
                               Instant startAt, Instant endAt, String tasksJson, Instant updatedAt) {
-        this.id = SINGLETON_ID;
         update(contestId, displayTitle, officialTitle, startAt, endAt, tasksJson, updatedAt);
     }
 
@@ -55,6 +60,7 @@ class AtcoderLeaderboardConfig {
         this.updatedAt = updatedAt;
     }
 
+    Long getId() { return id; }
     String getContestId() { return contestId; }
     String getDisplayTitle() { return displayTitle; }
     String getOfficialTitle() { return officialTitle; }

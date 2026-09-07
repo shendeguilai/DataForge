@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -51,6 +50,7 @@ public class AtcoderProblemTranslationService {
     private final ReentrantLock lifecycleLock = new ReentrantLock();
     private final AtomicLong generation = new AtomicLong(1);
     private final AtomicLong activeGeneration = new AtomicLong(NO_ACTIVE_JOB);
+    private volatile String activeContestId;
 
     @Autowired
     public AtcoderProblemTranslationService(
@@ -121,15 +121,27 @@ public class AtcoderProblemTranslationService {
     }
 
     public ProblemOverviewView publicOverview() {
-        return overview(false);
+        return publicOverview(null);
+    }
+
+    public ProblemOverviewView publicOverview(String contestId) {
+        return overview(contestId, false);
     }
 
     public ProblemOverviewView adminOverview() {
-        return overview(true);
+        return adminOverview(null);
+    }
+
+    public ProblemOverviewView adminOverview(String contestId) {
+        return overview(contestId, true);
     }
 
     public ProblemDetailView detail(String rawTaskId) {
-        AtcoderLeaderboardConfig config = requireConfig();
+        return detail(null, rawTaskId);
+    }
+
+    public ProblemDetailView detail(String rawContestId, String rawTaskId) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         String taskId = normalizeTaskId(rawTaskId);
         AtcoderStandings.Task task = tasks(config).stream()
                 .filter(candidate -> candidate.id().equals(taskId))
@@ -150,7 +162,11 @@ public class AtcoderProblemTranslationService {
     }
 
     public AdminProblemDetailView adminDetail(String rawTaskId) {
-        AtcoderLeaderboardConfig config = requireConfig();
+        return adminDetail(null, rawTaskId);
+    }
+
+    public AdminProblemDetailView adminDetail(String rawContestId, String rawTaskId) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         String taskId = normalizeTaskId(rawTaskId);
         AtcoderStandings.Task task = requireTask(config, taskId);
         Optional<AtcoderProblemTranslation> stored = translations
@@ -169,21 +185,32 @@ public class AtcoderProblemTranslationService {
     }
 
     public AdminProblemDetailView saveManualTranslation(String rawTaskId, String editedHtml) {
+        return saveManualTranslation(null, rawTaskId, editedHtml);
+    }
+
+    public AdminProblemDetailView saveManualTranslation(String rawContestId, String rawTaskId,
+                                                        String editedHtml) {
         if (editedHtml != null && editedHtml.length() > 1_000_000) {
             throw new IllegalArgumentException("译文内容过长");
         }
-        return saveManual(rawTaskId, editedHtml, false);
+        return saveManual(rawContestId, rawTaskId, editedHtml, false);
     }
 
     public AdminProblemDetailView saveStructuredManualTranslation(String rawTaskId, String manualText) {
+        return saveStructuredManualTranslation(null, rawTaskId, manualText);
+    }
+
+    public AdminProblemDetailView saveStructuredManualTranslation(String rawContestId, String rawTaskId,
+                                                                  String manualText) {
         if (manualText != null && manualText.length() > 1_000_000) {
             throw new IllegalArgumentException("手动题面内容过长");
         }
-        return saveManual(rawTaskId, manualText, true);
+        return saveManual(rawContestId, rawTaskId, manualText, true);
     }
 
-    private AdminProblemDetailView saveManual(String rawTaskId, String content, boolean structured) {
-        AtcoderLeaderboardConfig config = requireConfig();
+    private AdminProblemDetailView saveManual(String rawContestId, String rawTaskId,
+                                              String content, boolean structured) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         String taskId = normalizeTaskId(rawTaskId);
         List<AtcoderStandings.Task> contestTasks = tasks(config);
         AtcoderStandings.Task task = contestTasks.stream()
@@ -192,7 +219,7 @@ public class AtcoderProblemTranslationService {
                 .orElseThrow(() -> new NoSuchElementException("当前比赛中没有这道题"));
         lifecycleLock.lock();
         try {
-            if (activeGeneration.get() == generation.get()) {
+            if (hasActiveJob()) {
                 throw new IllegalStateException("翻译任务正在运行，请结束后再编辑");
             }
             AtcoderProblemTranslation entity = translations
@@ -215,22 +242,26 @@ public class AtcoderProblemTranslationService {
             }
             entity.ready(translated, clock.instant());
             translations.saveAndFlush(entity);
-            return adminDetail(taskId);
+            return adminDetail(config.getContestId(), taskId);
         } finally {
             lifecycleLock.unlock();
         }
     }
 
     public ProblemOverviewView startAll(boolean force) {
-        AtcoderLeaderboardConfig config = requireConfig();
+        return startAll(null, force);
+    }
+
+    public ProblemOverviewView startAll(String rawContestId, boolean force) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         List<AtcoderStandings.Task> tasks = tasks(config);
         if (tasks.isEmpty()) throw new IllegalStateException("当前比赛没有可翻译的题目");
         translator.requireConfigured();
 
         lifecycleLock.lock();
         try {
-            long token = generation.get();
-            if (activeGeneration.get() == token) return adminOverview();
+            if (hasActiveJob()) return activeOrThrow(config);
+            long token = generation.incrementAndGet();
 
             Map<String, AtcoderProblemTranslation> existing = rowsByTask(config.getContestId());
             List<String> queuedTaskIds = new ArrayList<>();
@@ -247,17 +278,22 @@ public class AtcoderProblemTranslationService {
                     queuedTaskIds.add(task.id());
                 }
             }
-            if (queuedTaskIds.isEmpty()) return adminOverview();
+            if (queuedTaskIds.isEmpty()) return adminOverview(config.getContestId());
             activeGeneration.set(token);
+            activeContestId = config.getContestId();
             submitCoordinator(config.getContestId(), token, queuedTaskIds);
-            return adminOverview();
+            return adminOverview(config.getContestId());
         } finally {
             lifecycleLock.unlock();
         }
     }
 
     public ProblemOverviewView retryTask(String rawTaskId) {
-        AtcoderLeaderboardConfig config = requireConfig();
+        return retryTask(null, rawTaskId);
+    }
+
+    public ProblemOverviewView retryTask(String rawContestId, String rawTaskId) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         translator.requireConfigured();
         String taskId = normalizeTaskId(rawTaskId);
         List<AtcoderStandings.Task> tasks = tasks(config);
@@ -268,8 +304,8 @@ public class AtcoderProblemTranslationService {
 
         lifecycleLock.lock();
         try {
-            long token = generation.get();
-            if (activeGeneration.get() == token) return adminOverview();
+            if (hasActiveJob()) return activeOrThrow(config);
+            long token = generation.incrementAndGet();
             Instant now = clock.instant();
             AtcoderProblemTranslation entity = translations
                     .findByContestIdAndTaskId(config.getContestId(), taskId)
@@ -290,25 +326,31 @@ public class AtcoderProblemTranslationService {
                 entity.translating(htmlProcessor.prepareMarkdownSource(problem, sourceFilename), now);
                 translations.saveAndFlush(entity);
                 activeGeneration.set(token);
+                activeContestId = config.getContestId();
                 submitMarkdownCoordinator(config.getContestId(), token,
                         Map.of(taskId, new MarkdownTranslationJob(problem, renderedSource, sourceFilename)));
-                return adminOverview();
+                return adminOverview(config.getContestId());
             }
             entity.queue(now, true);
             translations.saveAndFlush(entity);
             activeGeneration.set(token);
+            activeContestId = config.getContestId();
             submitCoordinator(config.getContestId(), token, List.of(taskId));
-            return adminOverview();
+            return adminOverview(config.getContestId());
         } finally {
             lifecycleLock.unlock();
         }
     }
 
     public ProblemOverviewView importPdf(String filename, byte[] bytes) {
+        return importPdf(null, filename, bytes);
+    }
+
+    public ProblemOverviewView importPdf(String rawContestId, String filename, byte[] bytes) {
         if (bytes != null && bytes.length > 25 * 1024 * 1024) {
             throw new IllegalArgumentException("PDF 文件不能超过 25MB");
         }
-        AtcoderLeaderboardConfig config = requireConfig();
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         List<AtcoderStandings.Task> tasks = tasks(config);
         if (tasks.isEmpty()) throw new IllegalStateException("当前比赛没有可导入的题目");
         translator.requireConfigured();
@@ -341,8 +383,8 @@ public class AtcoderProblemTranslationService {
 
         lifecycleLock.lock();
         try {
-            long token = generation.get();
-            if (activeGeneration.get() == token) throw new IllegalStateException("已有题面翻译任务正在运行，请稍后再上传");
+            if (hasActiveJob()) throw new IllegalStateException("已有题面翻译任务正在运行，请稍后再上传");
+            long token = generation.incrementAndGet();
             Map<String, AtcoderProblemTranslation> existing = rowsByTask(config.getContestId());
             Map<String, AtcoderContestPdfParser.ParsedProblem> queued = new HashMap<>();
             Instant now = clock.instant();
@@ -360,18 +402,23 @@ public class AtcoderProblemTranslationService {
                 queued.put(task.id(), problem);
             }
             activeGeneration.set(token);
+            activeContestId = config.getContestId();
             submitPdfCoordinator(config.getContestId(), token, queued);
-            return adminOverview();
+            return adminOverview(config.getContestId());
         } finally {
             lifecycleLock.unlock();
         }
     }
 
     public ProblemOverviewView importMarkdown(String filename, byte[] bytes) {
+        return importMarkdown(null, filename, bytes);
+    }
+
+    public ProblemOverviewView importMarkdown(String rawContestId, String filename, byte[] bytes) {
         if (bytes != null && bytes.length > 5 * 1024 * 1024) {
             throw new IllegalArgumentException("Markdown 文件不能超过 5MB");
         }
-        AtcoderLeaderboardConfig config = requireConfig();
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         List<AtcoderStandings.Task> tasks = tasks(config);
         if (tasks.isEmpty()) throw new IllegalStateException("当前比赛没有可导入的题目");
         AtcoderContestMarkdownParser.ParsedContestMarkdown parsed = markdownParser.parse(bytes, filename);
@@ -396,8 +443,7 @@ public class AtcoderProblemTranslationService {
 
         lifecycleLock.lock();
         try {
-            long token = generation.get();
-            if (activeGeneration.get() == token) {
+            if (hasActiveJob()) {
                 throw new IllegalStateException("已有题面翻译任务正在运行，请稍后再上传");
             }
             Map<String, AtcoderProblemTranslation> existing = rowsByTask(config.getContestId());
@@ -412,21 +458,25 @@ public class AtcoderProblemTranslationService {
                 translations.saveAndFlush(entity);
             }
             updateMarkdownTaskNames(config, tasks, jobs, now);
-            return adminOverview();
+            return adminOverview(config.getContestId());
         } finally {
             lifecycleLock.unlock();
         }
     }
 
     public ProblemOverviewView translateImportedMarkdownAll() {
-        AtcoderLeaderboardConfig config = requireConfig();
+        return translateImportedMarkdownAll(null);
+    }
+
+    public ProblemOverviewView translateImportedMarkdownAll(String rawContestId) {
+        AtcoderLeaderboardConfig config = requireConfig(rawContestId);
         translator.requireConfigured();
         List<AtcoderStandings.Task> tasks = tasks(config);
 
         lifecycleLock.lock();
         try {
-            long token = generation.get();
-            if (activeGeneration.get() == token) return adminOverview();
+            if (hasActiveJob()) return activeOrThrow(config);
+            long token = generation.incrementAndGet();
             Map<String, AtcoderProblemTranslation> stored = rowsByTask(config.getContestId());
             Map<String, MarkdownTranslationJob> jobs = new LinkedHashMap<>();
             for (AtcoderStandings.Task task : tasks) {
@@ -454,21 +504,9 @@ public class AtcoderProblemTranslationService {
                 translations.saveAndFlush(entity);
             }
             activeGeneration.set(token);
+            activeContestId = config.getContestId();
             submitMarkdownCoordinator(config.getContestId(), token, jobs);
-            return adminOverview();
-        } finally {
-            lifecycleLock.unlock();
-        }
-    }
-
-    public void onContestChanged(String previousContestId, String currentContestId) {
-        if (Objects.equals(previousContestId, currentContestId)) return;
-        lifecycleLock.lock();
-        try {
-            generation.incrementAndGet();
-            activeGeneration.set(NO_ACTIVE_JOB);
-            translations.deleteAllInBatch();
-            translations.flush();
+            return adminOverview(config.getContestId());
         } finally {
             lifecycleLock.unlock();
         }
@@ -478,8 +516,8 @@ public class AtcoderProblemTranslationService {
         try {
             coordinatorExecutor.execute(() -> runBatch(contestId, token, taskIds));
         } catch (RuntimeException ex) {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
             for (String taskId : taskIds) fail(contestId, token, taskId, "翻译任务队列已满，请稍后重试");
+            finishJob(token);
             throw ex;
         }
     }
@@ -489,10 +527,10 @@ public class AtcoderProblemTranslationService {
         try {
             coordinatorExecutor.execute(() -> runPdfBatch(contestId, token, problems));
         } catch (RuntimeException ex) {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
             for (String taskId : problems.keySet()) {
                 fail(contestId, token, taskId, "PDF 翻译任务队列已满，请稍后重试");
             }
+            finishJob(token);
             throw ex;
         }
     }
@@ -502,10 +540,10 @@ public class AtcoderProblemTranslationService {
         try {
             coordinatorExecutor.execute(() -> runMarkdownBatch(contestId, token, jobs));
         } catch (RuntimeException ex) {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
             for (String taskId : jobs.keySet()) {
                 fail(contestId, token, taskId, "Markdown 翻译任务队列已满，请稍后重试");
             }
+            finishJob(token);
             throw ex;
         }
     }
@@ -530,7 +568,7 @@ public class AtcoderProblemTranslationService {
             }
             CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).join();
         } finally {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
+            finishJob(token);
         }
     }
 
@@ -561,7 +599,7 @@ public class AtcoderProblemTranslationService {
             }
             CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).join();
         } finally {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
+            finishJob(token);
         }
     }
 
@@ -591,7 +629,7 @@ public class AtcoderProblemTranslationService {
             }
             CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).join();
         } finally {
-            activeGeneration.compareAndSet(token, NO_ACTIVE_JOB);
+            finishJob(token);
         }
     }
 
@@ -665,17 +703,17 @@ public class AtcoderProblemTranslationService {
     }
 
     private boolean isCurrent(String contestId, long token) {
-        if (generation.get() != token) return false;
-        return configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID)
-                .map(config -> config.getContestId().equals(contestId))
-                .orElse(false);
+        return generation.get() == token
+                && activeGeneration.get() == token
+                && contestId.equals(activeContestId)
+                && configs.findByContestIdIgnoreCase(contestId).isPresent();
     }
 
-    private ProblemOverviewView overview(boolean includeErrors) {
-        Optional<AtcoderLeaderboardConfig> found = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID);
+    private ProblemOverviewView overview(String rawContestId, boolean includeErrors) {
+        Optional<AtcoderLeaderboardConfig> found = AtcoderContestSupport.select(configs, rawContestId);
         if (found.isEmpty()) {
             return new ProblemOverviewView(false, null, "NOT_CONFIGURED", 0, 0, 0,
-                    false, null, List.of());
+                    false, null, List.of(), List.of());
         }
         AtcoderLeaderboardConfig config = found.get();
         List<AtcoderStandings.Task> configuredTasks = tasks(config);
@@ -693,7 +731,7 @@ public class AtcoderProblemTranslationService {
                         .orElse(config.getContestId() + "_ALL.md"),
                 markdownRows.size());
         boolean running = taskViews.stream().anyMatch(task -> isTransient(task.status()))
-                || activeGeneration.get() == generation.get();
+                || (hasActiveJob() && config.getContestId().equals(activeContestId));
         String status;
         if (configuredTasks.isEmpty()) status = "NOT_STARTED";
         else if (running) status = "RUNNING";
@@ -704,7 +742,8 @@ public class AtcoderProblemTranslationService {
         else if (ready == 0 && failed == 0) status = "NOT_STARTED";
         else status = "FAILED";
         return new ProblemOverviewView(true, toContestView(config), status, configuredTasks.size(),
-                ready, failed, running, importedBundle, taskViews);
+                ready, failed, running, importedBundle, taskViews,
+                AtcoderContestSupport.options(configs, config.getContestId(), clock));
     }
 
     private Map<String, AtcoderProblemTranslation> rowsByTask(String contestId) {
@@ -768,9 +807,24 @@ public class AtcoderProblemTranslationService {
         }
     }
 
-    private AtcoderLeaderboardConfig requireConfig() {
-        return configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID)
+    private AtcoderLeaderboardConfig requireConfig(String contestId) {
+        return AtcoderContestSupport.select(configs, contestId)
                 .orElseThrow(() -> new IllegalStateException("排行榜尚未配置比赛"));
+    }
+
+    private boolean hasActiveJob() {
+        return activeGeneration.get() != NO_ACTIVE_JOB;
+    }
+
+    private ProblemOverviewView activeOrThrow(AtcoderLeaderboardConfig config) {
+        if (config.getContestId().equals(activeContestId)) {
+            return adminOverview(config.getContestId());
+        }
+        throw new IllegalStateException("另一场比赛的题面翻译任务正在运行，请结束后再操作");
+    }
+
+    private void finishJob(long token) {
+        if (activeGeneration.compareAndSet(token, NO_ACTIVE_JOB)) activeContestId = null;
     }
 
     private static String normalizeTaskId(String value) {

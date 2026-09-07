@@ -5,6 +5,7 @@ import cn.datacraft.atcoder.AtcoderLeaderboardService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -17,12 +18,12 @@ public class AtcoderLeaderboardController {
     }
 
     @GetMapping
-    public LeaderboardView current() {
-        return leaderboard.currentLeaderboard();
+    public LeaderboardView current(@RequestParam(required = false) String contestId) {
+        return leaderboard.currentLeaderboard(contestId);
     }
 
     @PostMapping("/refresh")
-    public LeaderboardView refresh() {
-        return leaderboard.manualRefresh();
+    public LeaderboardView refresh(@RequestParam(required = false) String contestId) {
+        return leaderboard.manualRefresh(contestId);
     }
 }

@@ -68,6 +68,8 @@
   gap: 11px;
 }
 
+.contest-picker{display:grid;gap:4px;min-width:210px;color:var(--muted);font-size:11px}.contest-picker span{font-weight:800}.contest-picker select{height:44px;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:0 34px 0 11px;font-size:12px;font-weight:700;outline:none}.contest-picker select:focus{border-color:var(--df-brand);box-shadow:0 0 0 3px rgba(63,111,159,.12)}.contest-picker select:disabled{opacity:.65}
+
 .problem-button{display:flex;align-items:center;gap:8px;height:44px;border:1px solid var(--green);border-radius:8px;background:var(--green);color:white;padding:0 14px;text-decoration:none;white-space:nowrap;transition:.2s}
 .problem-button:hover{background:var(--df-brand-hover)}.problem-button span{display:grid;width:24px;height:24px;place-items:center;border-radius:5px;background:var(--lime);color:var(--ink);font-size:11px;font-weight:900}.problem-button b{font-size:10px}.problem-button.disabled{border-color:var(--line);background:#e7e9e3;color:#8d958f;pointer-events:none}.problem-button.disabled span{background:#d7dad4;color:#8d958f}.problem-button.running span{animation:pulse 1.5s ease-in-out infinite}
 
@@ -291,7 +293,8 @@
 @media(max-width:900px) {
   .leaderboard-main { padding: 30px 17px 65px; }
   .leaderboard-heading { align-items: flex-start; flex-direction: column; }
-  .refresh-controls { width: 100%; justify-content: space-between; }
+  .refresh-controls { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
+  .contest-picker { flex: 1 1 240px; }
   .leaderboard-summary { grid-template-columns: 1fr 1fr; }
   .leaderboard-summary > div:nth-child(2) { border-right: 0; }
   .leaderboard-summary > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -302,6 +305,7 @@
   .title-line { align-items: flex-start; flex-direction: column; }
   .title-line h1 { font-size: 29px; }
   .refresh-controls { align-items: stretch; }
+  .contest-picker { flex-basis: 100%; width: 100%; }
   .problem-button{justify-content:center}.problem-button b{display:none}
   .sync-state { min-width: 0; flex: 1; padding: 8px 10px; }
   .refresh-button { padding: 0 12px; }

@@ -1,5 +1,6 @@
 const problem$ = selector => document.querySelector(selector);
 let problemOverview = null;
+let selectedContestId = new URLSearchParams(location.search).get('contestId') || '';
 let selectedTaskId = '';
 let selectedDetail = null;
 let statementLanguage = 'zh';
@@ -11,10 +12,15 @@ let problemDetailAbortController = null;
 
 problem$('#showChinese').onclick = () => setStatementLanguage('zh');
 problem$('#showEnglish').onclick = () => setStatementLanguage('en');
+problem$('#problemContestSelector').onchange = event => selectContest(event.target.value);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) loadProblemOverview(true);
 });
-window.addEventListener('popstate', () => loadProblemOverview(true));
+window.addEventListener('popstate', () => {
+  selectedContestId = new URLSearchParams(location.search).get('contestId') || '';
+  selectedTaskId = '';
+  loadProblemOverview(true);
+});
 
 loadProblemOverview(true);
 
@@ -31,12 +37,14 @@ async function loadProblemOverview(loadTask) {
   problemOverviewAbortController?.abort();
   problemOverviewAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   try {
-    const data = await problemRequest('/api/tools/atcoder-problems', problemOverviewAbortController?.signal);
+    const data = await problemRequest(withContest('/api/tools/atcoder-problems'), problemOverviewAbortController?.signal);
     if (sequence !== problemOverviewSequence) return;
     const previousStatus = problemOverview?.tasks?.find(task => task.id === selectedTaskId)?.status;
     problemOverview = data;
+    if (data.contest?.id) selectedContestId = data.contest.id;
     renderOverview();
     if (!data.configured || !data.tasks?.length) {
+      updateProblemUrl('', true);
       showStatementState(data.configured ? '当前比赛还没有可阅读的题目。' : '排行榜尚未配置比赛。');
       return;
     }
@@ -58,12 +66,15 @@ async function loadProblemOverview(loadTask) {
 
 function renderOverview() {
   const contest = problemOverview?.contest;
+  renderContestSelector(problemOverview?.contests || [], contest?.id || '');
   problem$('#problemContestTitle').textContent = contest?.title || 'AtCoder 翻译题面';
   problem$('#problemContestMeta').textContent = contest
     ? `${String(contest.id || '').toUpperCase()} · 英文原题 AI 翻译版`
     : '管理员尚未配置当前比赛。';
   problem$('#officialContestLink').href = contest?.url || '#';
   problem$('#officialContestLink').classList.toggle('hidden', !contest?.url);
+  problem$('.problems-back').href = selectedContestId
+    ? `/atcoder-leaderboard.html?contestId=${encodeURIComponent(selectedContestId)}` : '/atcoder-leaderboard.html';
   problem$('#taskProgress').textContent = `${problemOverview?.readyCount || 0} / ${problemOverview?.totalCount || 0} 已翻译`;
   renderTaskTabs();
 }
@@ -90,16 +101,52 @@ async function selectTask(taskId, pushHistory) {
   const task = problemOverview.tasks.find(item => item.id === taskId);
   renderTaskHeader(task);
   showStatementState(statusMessage(task?.status));
-  if (pushHistory) history.pushState(null, '', `?task=${encodeURIComponent(taskId)}`);
-  else history.replaceState(null, '', `?task=${encodeURIComponent(taskId)}`);
+  updateProblemUrl(taskId, !pushHistory);
   try {
-    selectedDetail = await problemRequest(`/api/tools/atcoder-problems/${encodeURIComponent(taskId)}`, problemDetailAbortController?.signal);
+    selectedDetail = await problemRequest(withContest(`/api/tools/atcoder-problems/${encodeURIComponent(taskId)}`), problemDetailAbortController?.signal);
     if (sequence !== problemDetailSequence || selectedTaskId !== taskId) return;
     renderTaskHeader(selectedDetail.task);
     renderStatement();
   } catch (error) {
     if (sequence === problemDetailSequence && selectedTaskId === taskId && error.name !== 'AbortError') showStatementState(error.message || '这道题暂时无法读取。');
   }
+}
+
+function renderContestSelector(contests, selectedId) {
+  const selector = problem$('#problemContestSelector');
+  selector.innerHTML = contests.length ? contests.map(contest =>
+    `<option value="${escapeHtml(contest.id)}" ${contest.id === selectedId ? 'selected' : ''}>${escapeHtml(contest.title || contest.id)} · ${contestStatusText(contest.status)}</option>`
+  ).join('') : '<option value="">尚无比赛</option>';
+  selector.disabled = contests.length < 2;
+}
+
+function selectContest(contestId) {
+  if (!contestId || contestId === selectedContestId) return;
+  selectedContestId = contestId;
+  selectedTaskId = '';
+  selectedDetail = null;
+  problemOverview = null;
+  updateProblemUrl('', false);
+  showStatementState('正在读取该场比赛的题面…');
+  loadProblemOverview(true);
+}
+
+function withContest(path) {
+  if (!selectedContestId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}contestId=${encodeURIComponent(selectedContestId)}`;
+}
+
+function updateProblemUrl(taskId, replace) {
+  const url = new URL(location.href);
+  if (selectedContestId) url.searchParams.set('contestId', selectedContestId);
+  else url.searchParams.delete('contestId');
+  if (taskId) url.searchParams.set('task', taskId);
+  else url.searchParams.delete('task');
+  history[replace ? 'replaceState' : 'pushState'](null, '', url);
+}
+
+function contestStatusText(status) {
+  return ({UPCOMING:'未开始',RUNNING:'比赛中',FINISHED:'已结束',UNKNOWN:'时间待确认'})[status] || '时间待确认';
 }
 
 function renderTaskHeader(task) {

@@ -29,12 +29,12 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class AtcoderProblemTranslationServiceTest {
     private final Map<String, AtcoderProblemTranslation> stored = new LinkedHashMap<>();
+    private final Map<String, AtcoderLeaderboardConfig> configured = new LinkedHashMap<>();
     private AtcoderLeaderboardConfigRepository configs;
     private AtcoderProblemTranslationRepository translations;
     private AtcoderProblemTranslationService service;
@@ -52,17 +52,22 @@ class AtcoderProblemTranslationServiceTest {
         );
         configs = mock(AtcoderLeaderboardConfigRepository.class);
         translations = mock(AtcoderProblemTranslationRepository.class);
-        when(configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID)).thenReturn(Optional.of(config));
-        when(translations.findAllByContestIdOrderByTaskOrderAscIdAsc("abc430"))
-                .thenAnswer(invocation -> new ArrayList<>(stored.values()));
+        configured.put(config.getContestId(), config);
+        when(configs.findAll()).thenAnswer(invocation -> new ArrayList<>(configured.values()));
+        when(configs.findByContestIdIgnoreCase(any())).thenAnswer(invocation ->
+                Optional.ofNullable(configured.get(((String) invocation.getArgument(0)).toLowerCase())));
+        when(translations.findAllByContestIdOrderByTaskOrderAscIdAsc(any()))
+                .thenAnswer(invocation -> stored.values().stream()
+                        .filter(item -> item.getContestId().equals(invocation.getArgument(0)))
+                        .toList());
         when(translations.findByContestIdAndTaskId(any(), any()))
-                .thenAnswer(invocation -> Optional.ofNullable(stored.get(invocation.getArgument(1))));
+                .thenAnswer(invocation -> Optional.ofNullable(stored.get(
+                        translationKey(invocation.getArgument(0), invocation.getArgument(1)))));
         when(translations.saveAndFlush(any())).thenAnswer(invocation -> {
             AtcoderProblemTranslation entity = invocation.getArgument(0);
-            stored.put(entity.getTaskId(), entity);
+            stored.put(translationKey(entity.getContestId(), entity.getTaskId()), entity);
             return entity;
         });
-        doAnswer(invocation -> { stored.clear(); return null; }).when(translations).deleteAllInBatch();
 
         AtcoderProblemSourceGateway source = taskSource();
         AtcoderProblemTranslator translator = html -> html
@@ -88,16 +93,29 @@ class AtcoderProblemTranslationServiceTest {
     }
 
     @Test
-    void ordinaryRestartSkipsReadyRowsAndContestSwitchDeletesThem() {
+    void ordinaryRestartSkipsReadyRowsAndContestSwitchKeepsBothContests() throws Exception {
         service.startAll(false);
-        String firstTranslation = stored.get("abc430_a").getTranslatedHtml();
+        String firstTranslation = stored.get(translationKey("abc430", "abc430_a")).getTranslatedHtml();
 
         service.startAll(false);
-        assertThat(stored.get("abc430_a").getTranslatedHtml()).isEqualTo(firstTranslation);
+        assertThat(stored.get(translationKey("abc430", "abc430_a")).getTranslatedHtml())
+                .isEqualTo(firstTranslation);
 
-        service.onContestChanged("abc430", "abc431");
-        assertThat(stored).isEmpty();
-        assertThat(service.publicOverview().readyCount()).isZero();
+        List<AtcoderStandings.Task> nextTasks = List.of(
+                new AtcoderStandings.Task("abc431_a", "A", "Next Contest", BigDecimal.valueOf(100)));
+        AtcoderLeaderboardConfig next = new AtcoderLeaderboardConfig(
+                "abc431", "班级 ABC431", "AtCoder Beginner Contest 431", null, null,
+                new ObjectMapper().findAndRegisterModules().writeValueAsString(nextTasks),
+                Instant.parse("2026-08-22T00:00:00Z"));
+        configured.put(next.getContestId(), next);
+
+        assertThat(service.publicOverview("abc431").readyCount()).isZero();
+        service.startAll("abc431", false);
+
+        assertThat(stored).containsKeys(
+                translationKey("abc430", "abc430_a"), translationKey("abc431", "abc431_a"));
+        assertThat(service.publicOverview("abc430").readyCount()).isEqualTo(2);
+        assertThat(service.publicOverview("abc431").readyCount()).isEqualTo(1);
     }
 
     @Test
@@ -324,6 +342,10 @@ class AtcoderProblemTranslationServiceTest {
                 <h3>Sample Input 1</h3><pre>1
                 </pre></span></div>
                 """;
+    }
+
+    private static String translationKey(String contestId, String taskId) {
+        return contestId + "\0" + taskId;
     }
 
     private static String markdownProblem(String label, String title, String problemId,

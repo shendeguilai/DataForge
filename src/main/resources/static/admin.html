@@ -28,12 +28,13 @@
     <div class="panel-heading"><div><span class="section-number">04</span><h2>AtCoder 赛事榜单</h2></div><a class="text-btn admin-board-link" href="/atcoder-leaderboard.html" target="_blank">打开公开榜单 ↗</a></div>
     <div class="leaderboard-admin-grid">
       <form id="contestConfigForm" class="leaderboard-config-form">
-        <div class="leaderboard-admin-title"><div><span>ACTIVE CONTEST</span><h3>当前比赛</h3></div><span class="cookie-state" id="atcoderCookieState">正在检查</span></div>
+        <div class="leaderboard-admin-title"><div><span>CONTEST ARCHIVE</span><h3>比赛管理</h3></div><span class="cookie-state" id="atcoderCookieState">正在检查</span></div>
+        <label class="admin-contest-picker">已保存比赛<select id="adminContestSelector" disabled><option>尚无比赛</option></select><small>切换后可查看和维护该场的配置与最新译文。</small></label>
         <div class="atcoder-cookie-manager">
           <label>AtCoder Cookie<input id="atcoderCookieInput" type="password" maxlength="4096" autocomplete="new-password" placeholder="REVEL_SESSION=..."><small>仅发送到本站服务端，验证成功后加密保存，页面不会回显。比赛进行中读取题面时，Cookie 对应账号必须已报名当前比赛。</small></label>
           <div class="cookie-manager-footer"><span id="atcoderCookieMeta">尚未配置</span><div><button class="mini-btn" id="saveAtcoderCookie" type="button">验证并保存 Cookie</button><button class="mini-btn hidden" id="clearAtcoderCookie" type="button">清除后台 Cookie</button></div></div>
         </div>
-        <label>Contest ID<input id="contestIdInput" maxlength="64" placeholder="abc430" autocomplete="off" required><small>保存时会连接 AtCoder 官方榜单，验证比赛与 Cookie。</small></label>
+        <label>Contest ID<input id="contestIdInput" maxlength="64" placeholder="abc430" autocomplete="off" required><small>保存时会连接 AtCoder 官方榜单；已有 ID 会更新，新 ID 会添加为新场次。</small></label>
         <label>展示标题<input id="contestTitleInput" maxlength="160" placeholder="留空则使用 AtCoder 官方名称"><small>公开榜单顶部显示的标题，可使用班级内熟悉的名称。</small></label>
         <button class="primary-btn" id="saveContestButton" type="submit"><span>验证并保存</span><b>✓</b></button>
         <div class="contest-config-summary" id="contestConfigSummary">尚未配置比赛</div>

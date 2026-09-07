@@ -8,20 +8,32 @@ let countdownTimer = null;
 let currentPage = 1;
 let currentTasks = [];
 let currentEntries = [];
-let currentContestId = '';
+let currentContestId = new URLSearchParams(location.search).get('contestId') || '';
+let autoRefreshEnabled = false;
 let canManualRefresh = false;
 let problemPollTimer = null;
 let problemSequence = 0;
 let problemAbortController = null;
+let contestTransitionTimer = null;
 const PAGE_SIZE = 50;
 
 refreshButton?.addEventListener('click', () => {
   if (canManualRefresh) loadLeaderboard(true);
 });
+board$('#contestSelector')?.addEventListener('change', event => selectContest(event.target.value));
 board$('#problemButton')?.addEventListener('click', event => {
   if (event.currentTarget.classList.contains('disabled')) event.preventDefault();
 });
 window.addEventListener('dataforge:auth-changed', event => setManualRefreshAccess(event.detail));
+window.addEventListener('popstate', () => {
+  const contestId = new URLSearchParams(location.search).get('contestId') || '';
+  if (contestId === currentContestId) return;
+  currentContestId = contestId;
+  currentPage = 1;
+  currentEntries = [];
+  loadLeaderboard(false);
+  loadProblemOverview();
+});
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadLeaderboard(false);
@@ -57,7 +69,8 @@ async function loadLeaderboard(manual) {
   if (window.DataForgeUI?.setBusy) window.DataForgeUI.setBusy(refreshButton, true, '同步中');
   else refreshButton.disabled = true;
   try {
-    const response = await fetch(manual ? '/api/tools/atcoder-leaderboard/refresh' : '/api/tools/atcoder-leaderboard', {
+    const base = manual ? '/api/tools/atcoder-leaderboard/refresh' : '/api/tools/atcoder-leaderboard';
+    const response = await fetch(withContest(base), {
       method: manual ? 'POST' : 'GET',
       signal: leaderboardAbortController?.signal
     });
@@ -66,7 +79,9 @@ async function loadLeaderboard(manual) {
     if (sequence !== leaderboardSequence) return;
     renderLeaderboard(payload);
     loadProblemOverview();
-    countdown = payload.refreshCooldownSeconds > 0 ? payload.refreshCooldownSeconds : (payload.refreshAfterSeconds || 60);
+    autoRefreshEnabled = Boolean(payload.autoRefresh);
+    countdown = payload.refreshCooldownSeconds > 0
+      ? payload.refreshCooldownSeconds : (payload.refreshAfterSeconds ?? 0);
     if (manual && payload.refreshCooldownSeconds > 0) showToast(`刷新过于频繁，请等待 ${payload.refreshCooldownSeconds} 秒`);
   } catch (error) {
     if (sequence !== leaderboardSequence || error.name === 'AbortError') return;
@@ -86,7 +101,7 @@ async function loadProblemOverview() {
   problemAbortController?.abort();
   problemAbortController = typeof AbortController === 'function' ? new AbortController() : null;
   try {
-    const response = await fetch('/api/tools/atcoder-problems', {signal: problemAbortController?.signal});
+    const response = await fetch(withContest('/api/tools/atcoder-problems'), {signal: problemAbortController?.signal});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error();
     if (sequence !== problemSequence) return;
@@ -107,6 +122,8 @@ function renderProblemButton(data) {
   button.classList.toggle('disabled', !available);
   button.classList.toggle('running', Boolean(data?.running));
   button.setAttribute('aria-disabled', String(!available));
+  button.href = currentContestId
+    ? `/atcoder-problems.html?contestId=${encodeURIComponent(currentContestId)}` : '/atcoder-problems.html';
   if (data?.running) button.querySelector('b').textContent = `题面翻译中 ${ready}/${total}`;
   else if (ready) button.querySelector('b').textContent = ready === total ? '查看翻译题面' : `查看翻译题面 ${ready}/${total}`;
   else if (data?.status === 'FAILED') button.querySelector('b').textContent = '题面翻译失败';
@@ -116,7 +133,7 @@ function renderProblemButton(data) {
 function startClock() {
   clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
-    if (document.hidden || refreshInFlight) return;
+    if (document.hidden || refreshInFlight || !autoRefreshEnabled) return;
     countdown = Math.max(0, countdown - 1);
     board$('#countdownLabel').textContent = countdown > 0 ? `${countdown} 秒后自动刷新` : '正在自动刷新';
     if (countdown === 0) loadLeaderboard(false);
@@ -124,6 +141,8 @@ function startClock() {
 }
 
 function renderLeaderboard(data) {
+  clearTimeout(contestTransitionTimer);
+  renderContestSelector(data.contests || [], data.contest?.id || '');
   board$('#participantTotal').textContent = data.participantCount || 0;
   board$('#rankedTotal').textContent = data.rankedCount || 0;
   board$('#leaderName').textContent = data.entries?.find(entry => entry.classRank === 1)?.displayName || '—';
@@ -132,6 +151,8 @@ function renderLeaderboard(data) {
     setContestState('等待配置', 'unknown');
     board$('#contestMeta').textContent = '管理员尚未配置当前比赛。';
     board$('#syncLabel').textContent = '尚未同步';
+    board$('#countdownLabel').textContent = '配置比赛后显示刷新状态';
+    board$('#refreshMode').innerHTML = '<b>—</b><small> 尚未配置</small>';
     board$('.live-dot').classList.add('off');
     board$('#officialLink').classList.add('hidden');
     hideNotice();
@@ -143,14 +164,17 @@ function renderLeaderboard(data) {
   if (currentContestId !== contest.id) {
     currentContestId = contest.id || '';
     currentPage = 1;
+    updateContestUrl(currentContestId, true);
   }
   board$('#contestTitle').textContent = contest.title || contest.id || 'AtCoder 实时排行榜';
   setContestState(statusText(contest.status), String(contest.status || 'unknown').toLowerCase());
   board$('#contestMeta').textContent = contestMeta(contest);
   board$('#syncLabel').textContent = data.lastSyncedAt ? `同步于 ${formatClock(data.lastSyncedAt)}` : '尚无可用数据';
-  board$('.live-dot').classList.toggle('off', !data.dataAvailable || data.stale);
+  board$('.live-dot').classList.toggle('off', !data.dataAvailable || data.stale || !data.autoRefresh);
   board$('#officialLink').href = contest.url || '#';
   board$('#officialLink').classList.toggle('hidden', !contest.url);
+  renderRefreshMode(data, contest);
+  scheduleContestStart(contest);
 
   if (data.stale || data.error) showNotice(data.error || 'AtCoder 暂时不可用，当前展示最近一次成功同步的数据。', !data.dataAvailable);
   else hideNotice();
@@ -160,6 +184,66 @@ function renderLeaderboard(data) {
     return;
   }
   renderTable(data.tasks || [], data.entries);
+}
+
+function scheduleContestStart(contest) {
+  if (contest?.status !== 'UPCOMING' || !contest.startAt) return;
+  const delay = new Date(contest.startAt).getTime() - Date.now() + 500;
+  if (delay > 0 && delay <= 2_147_000_000) {
+    contestTransitionTimer = setTimeout(() => loadLeaderboard(false), delay);
+  }
+}
+
+function renderContestSelector(contests, selectedId) {
+  const selector = board$('#contestSelector');
+  if (!selector) return;
+  selector.innerHTML = contests.length ? contests.map(contest =>
+    `<option value="${attr(contest.id)}" ${contest.id === selectedId ? 'selected' : ''}>${html(contest.title || contest.id)} · ${statusText(contest.status)}</option>`
+  ).join('') : '<option value="">尚无比赛</option>';
+  selector.disabled = contests.length < 2;
+}
+
+function selectContest(contestId) {
+  if (!contestId || contestId === currentContestId) return;
+  currentContestId = contestId;
+  currentPage = 1;
+  currentTasks = [];
+  currentEntries = [];
+  autoRefreshEnabled = false;
+  countdown = 0;
+  updateContestUrl(contestId, false);
+  showBoardState('正在读取该场比赛排行…');
+  loadLeaderboard(false);
+  loadProblemOverview();
+}
+
+function renderRefreshMode(data, contest) {
+  autoRefreshEnabled = Boolean(data.autoRefresh);
+  const mode = board$('#refreshMode');
+  const label = board$('#countdownLabel');
+  const footer = board$('#leaderboardFooter');
+  if (autoRefreshEnabled) {
+    mode.innerHTML = '<b>60</b><small> 秒</small>';
+    label.textContent = countdown > 0 ? `${countdown} 秒后自动刷新` : '每 60 秒自动刷新';
+    footer.textContent = '赛时数据每 60 秒同步一次。';
+  } else {
+    const text = contest.status === 'UPCOMING' ? '比赛开始后自动刷新' : '已停止自动刷新';
+    mode.innerHTML = `<b>—</b><small> ${html(contest.status === 'FINISHED' ? '已结束' : '不轮询')}</small>`;
+    label.textContent = text;
+    footer.textContent = text + '。';
+  }
+}
+
+function withContest(path) {
+  if (!currentContestId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}contestId=${encodeURIComponent(currentContestId)}`;
+}
+
+function updateContestUrl(contestId, replace) {
+  const url = new URL(location.href);
+  if (contestId) url.searchParams.set('contestId', contestId);
+  else url.searchParams.delete('contestId');
+  history[replace ? 'replaceState' : 'pushState'](null, '', url);
 }
 
 function renderTable(tasks, entries) {

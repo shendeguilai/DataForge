@@ -11,8 +11,8 @@ import cn.datacraft.atcoder.AtcoderLeaderboardDtos.TaskView;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,13 +31,12 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 @Service
 public class AtcoderLeaderboardService {
-    private static final Pattern CONTEST_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
     private static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_]{1,32}");
     private static final Duration CACHE_TTL = Duration.ofSeconds(55);
     private static final Duration MANUAL_REFRESH_COOLDOWN = Duration.ofSeconds(10);
@@ -44,100 +44,83 @@ public class AtcoderLeaderboardService {
     private static final int MAX_BULK_PARTICIPANTS = 200;
 
     private final AtcoderLeaderboardConfigRepository configs;
+    private final AtcoderLeaderboardSnapshotRepository snapshots;
     private final AtcoderLeaderboardParticipantRepository participants;
     private final AtcoderStandingsGateway gateway;
-    private final AtcoderProblemTranslationService problemTranslations;
     private final ObjectMapper mapper;
     private final Clock clock;
-    private final ReentrantLock refreshLock = new ReentrantLock();
-
-    private volatile SourceCache sourceCache;
-    private volatile SnapshotCache snapshotCache;
-    private volatile Instant lastAttemptAt = Instant.EPOCH;
+    private final Map<String, ReentrantLock> refreshLocks = new ConcurrentHashMap<>();
 
     @Autowired
     public AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
+                                     AtcoderLeaderboardSnapshotRepository snapshots,
                                      AtcoderLeaderboardParticipantRepository participants,
                                      AtcoderStandingsGateway gateway,
-                                     AtcoderProblemTranslationService problemTranslations,
                                      ObjectMapper mapper) {
-        this(configs, participants, gateway, problemTranslations, mapper, Clock.systemUTC());
+        this(configs, snapshots, participants, gateway, mapper, Clock.systemUTC());
     }
 
     AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
-                              AtcoderLeaderboardParticipantRepository participants,
-                              AtcoderStandingsGateway gateway, ObjectMapper mapper, Clock clock) {
-        this(configs, participants, gateway, null, mapper, clock);
-    }
-
-    AtcoderLeaderboardService(AtcoderLeaderboardConfigRepository configs,
+                              AtcoderLeaderboardSnapshotRepository snapshots,
                               AtcoderLeaderboardParticipantRepository participants,
                               AtcoderStandingsGateway gateway,
-                              AtcoderProblemTranslationService problemTranslations,
                               ObjectMapper mapper, Clock clock) {
         this.configs = configs;
+        this.snapshots = snapshots;
         this.participants = participants;
         this.gateway = gateway;
-        this.problemTranslations = problemTranslations;
         this.mapper = mapper;
         this.clock = clock;
     }
 
-    public LeaderboardView currentLeaderboard() {
-        return refreshLeaderboard(false);
+    public LeaderboardView currentLeaderboard() { return currentLeaderboard(null); }
+
+    public LeaderboardView currentLeaderboard(String contestId) {
+        return refreshLeaderboard(contestId, false);
     }
 
-    public LeaderboardView manualRefresh() {
-        return refreshLeaderboard(true);
+    public LeaderboardView manualRefresh() { return manualRefresh(null); }
+
+    public LeaderboardView manualRefresh(String contestId) {
+        return refreshLeaderboard(contestId, true);
     }
 
-    public AdminConfigView getConfig() {
-        Optional<AtcoderLeaderboardConfig> config = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID);
-        return config.map(this::toConfigView).orElseGet(() -> new AdminConfigView(
+    public AdminConfigView getConfig() { return getConfig(null); }
+
+    public AdminConfigView getConfig(String contestId) {
+        Optional<AtcoderLeaderboardConfig> selected = AtcoderContestSupport.select(configs, contestId);
+        if (selected.isEmpty()) return new AdminConfigView(
                 false, null, null, null, null, null, null,
-                gateway.cookieStatus().name(), gateway.cookieSource(), gateway.cookieUpdatedAt(), List.of()
-        ));
+                gateway.cookieStatus().name(), gateway.cookieSource(), gateway.cookieUpdatedAt(),
+                List.of(), List.of()
+        );
+        return toConfigView(selected.get());
     }
 
-    public AdminConfigView updateCookie(String cookie) {
-        Optional<AtcoderLeaderboardConfig> config = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID);
-        String contestId = config.map(AtcoderLeaderboardConfig::getContestId).orElse(null);
-        AtcoderStandings.Snapshot standings = gateway.updateCookie(cookie, contestId);
-        if (config.isPresent() && standings != null) {
-            Instant now = clock.instant();
-            refreshLock.lock();
-            try {
-                Map<Long, Integer> previousRanks = ranksForContest(contestId);
-                sourceCache = new SourceCache(contestId, standings, now);
-                LeaderboardView view = buildLeaderboard(config.get(), standings,
-                        participants.findAllByOrderBySortOrderAscIdAsc(), previousRanks, now);
-                snapshotCache = new SnapshotCache(contestId, view, now);
-                lastAttemptAt = now;
-            } finally {
-                refreshLock.unlock();
-            }
+    public AdminConfigView updateCookie(String cookie) { return updateCookie(cookie, null); }
+
+    public AdminConfigView updateCookie(String cookie, String contestId) {
+        Optional<AtcoderLeaderboardConfig> selected = AtcoderContestSupport.select(configs, contestId);
+        String selectedContestId = selected.map(AtcoderLeaderboardConfig::getContestId).orElse(null);
+        AtcoderStandings.Snapshot standings = gateway.updateCookie(cookie, selectedContestId);
+        if (selected.isPresent() && standings != null) {
+            persistSuccessfulSnapshot(selectedContestId, standings, clock.instant());
         }
-        return getConfig();
+        return getConfig(selectedContestId);
     }
 
-    public AdminConfigView clearManagedCookie() {
+    public AdminConfigView clearManagedCookie() { return clearManagedCookie(null); }
+
+    public AdminConfigView clearManagedCookie(String contestId) {
         gateway.clearManagedCookie();
-        refreshLock.lock();
-        try {
-            sourceCache = null;
-            lastAttemptAt = Instant.EPOCH;
-        } finally {
-            refreshLock.unlock();
-        }
-        return getConfig();
+        return getConfig(contestId);
     }
 
+    @Transactional
     public AdminConfigView saveConfig(String rawContestId, String rawDisplayTitle) {
-        String contestId = normalizeContestId(rawContestId);
+        String contestId = AtcoderContestSupport.normalizeContestId(rawContestId);
         String requestedTitle = normalizeOptionalTitle(rawDisplayTitle);
-        Optional<AtcoderLeaderboardConfig> existingConfig = configs
-                .findById(AtcoderLeaderboardConfig.SINGLETON_ID);
-        String previousContestId = existingConfig.map(AtcoderLeaderboardConfig::getContestId).orElse(null);
+        Optional<AtcoderLeaderboardConfig> existingConfig = configs.findByContestIdIgnoreCase(contestId);
 
         AtcoderStandings.Snapshot standings = gateway.fetchStandings(contestId);
         AtcoderStandings.ContestMetadata metadata = gateway.fetchMetadata(contestId);
@@ -150,25 +133,13 @@ public class AtcoderLeaderboardService {
 
         AtcoderLeaderboardConfig config = existingConfig
                 .orElseGet(() -> new AtcoderLeaderboardConfig(
-                        contestId, displayTitle, officialTitle, metadata.startAt(), metadata.endAt(), tasksJson, now
+                        contestId, displayTitle, officialTitle,
+                        metadata.startAt(), metadata.endAt(), tasksJson, now
                 ));
-        config.update(contestId, displayTitle, officialTitle, metadata.startAt(), metadata.endAt(), tasksJson, now);
+        config.update(contestId, displayTitle, officialTitle,
+                metadata.startAt(), metadata.endAt(), tasksJson, now);
         configs.saveAndFlush(config);
-        if (problemTranslations != null) {
-            problemTranslations.onContestChanged(previousContestId, contestId);
-        }
-
-        refreshLock.lock();
-        try {
-            Map<Long, Integer> previousRanks = ranksForContest(contestId);
-            sourceCache = new SourceCache(contestId, standings, now);
-            LeaderboardView view = buildLeaderboard(config, standings,
-                    participants.findAllByOrderBySortOrderAscIdAsc(), previousRanks, now);
-            snapshotCache = new SnapshotCache(contestId, view, now);
-            lastAttemptAt = now;
-        } finally {
-            refreshLock.unlock();
-        }
+        persistSuccessfulSnapshot(contestId, standings, now);
         return toConfigView(config);
     }
 
@@ -193,13 +164,11 @@ public class AtcoderLeaderboardService {
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalArgumentException("该 AtCoder ID 已在排行榜中", ex);
         }
-        rebuildProjection();
         return toParticipantView(entity);
     }
 
     @Transactional
-    public List<ParticipantView> addParticipants(
-            List<AtcoderLeaderboardDtos.BulkParticipantRequest> requests) {
+    public List<ParticipantView> addParticipants(List<AtcoderLeaderboardDtos.BulkParticipantRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             throw new IllegalArgumentException("请至少提供一条选手数据");
         }
@@ -246,7 +215,6 @@ public class AtcoderLeaderboardService {
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalArgumentException("批量数据中存在已录入的 AtCoder ID", ex);
         }
-        rebuildProjection();
         return entities.stream().map(this::toParticipantView).toList();
     }
 
@@ -265,7 +233,6 @@ public class AtcoderLeaderboardService {
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalArgumentException("该 AtCoder ID 已在排行榜中", ex);
         }
-        rebuildProjection();
         return toParticipantView(entity);
     }
 
@@ -273,87 +240,107 @@ public class AtcoderLeaderboardService {
         if (!participants.existsById(id)) throw new NoSuchElementException("排行榜选手不存在");
         participants.deleteById(id);
         participants.flush();
-        rebuildProjection();
     }
 
-    private LeaderboardView refreshLeaderboard(boolean force) {
-        Optional<AtcoderLeaderboardConfig> found = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID);
+    private LeaderboardView refreshLeaderboard(String rawContestId, boolean force) {
+        Optional<AtcoderLeaderboardConfig> found = AtcoderContestSupport.select(configs, rawContestId);
         if (found.isEmpty()) return emptyLeaderboard();
         AtcoderLeaderboardConfig config = found.get();
         Instant now = clock.instant();
-        SnapshotCache current = matchingSnapshot(config.getContestId());
+        AtcoderLeaderboardSnapshot stored = snapshots.findById(config.getContestId()).orElse(null);
+        ReentrantLock refreshLock = refreshLocks.computeIfAbsent(
+                config.getContestId(), ignored -> new ReentrantLock());
 
-        if (!force && isFresh(config, now) && current != null) return current.view;
-        if (!force && current != null && remainingCooldown(now) > 0
-                && (current.view.stale() || !current.view.dataAvailable())) return current.view;
-        if (force && current != null) {
-            int cooldown = remainingCooldown(now);
-            if (cooldown > 0) return withFlags(current.view, false, false, null, cooldown);
+        if (!force && !shouldAutoRefresh(config, stored, now)) return storedView(config, stored, false, 0);
+        if (force && stored != null) {
+            int cooldown = remainingCooldown(stored, now);
+            if (cooldown > 0) return storedView(config, stored, false, cooldown);
         }
 
         if (!refreshLock.tryLock()) {
-            if (current != null) return withFlags(current.view, current.view.stale(), true, current.view.error(), 0);
+            if (stored != null && stored.getStandingsJson() != null) {
+                return storedView(config, stored, true, 0);
+            }
             refreshLock.lock();
         }
         try {
             now = clock.instant();
-            current = matchingSnapshot(config.getContestId());
-            if (!force && isFresh(config, now) && current != null) return current.view;
-            if (!force && current != null && remainingCooldown(now) > 0
-                    && (current.view.stale() || !current.view.dataAvailable())) return current.view;
-            if (force && current != null) {
-                int cooldown = remainingCooldown(now);
-                if (cooldown > 0) return withFlags(current.view, false, false, null, cooldown);
+            config = AtcoderContestSupport.select(configs, config.getContestId()).orElseThrow();
+            stored = snapshots.findById(config.getContestId()).orElse(null);
+            if (!force && !shouldAutoRefresh(config, stored, now)) return storedView(config, stored, false, 0);
+            if (force && stored != null) {
+                int cooldown = remainingCooldown(stored, now);
+                if (cooldown > 0) return storedView(config, stored, false, cooldown);
             }
 
-            lastAttemptAt = now;
+            AtcoderStandings.Snapshot previous = readStandings(stored);
+            Map<Long, Integer> previousRanks = ranks(previous == null
+                    ? null : buildLeaderboard(config, previous, Map.of(),
+                    stored.getSyncedAt(), false, false, null, 0));
+            AtcoderLeaderboardSnapshot target = stored == null
+                    ? new AtcoderLeaderboardSnapshot(config.getContestId()) : stored;
+            target.attempted(now);
+            snapshots.saveAndFlush(target);
             try {
                 AtcoderStandings.Snapshot standings = gateway.fetchStandings(config.getContestId());
-                Map<Long, Integer> previousRanks = ranks(current == null ? null : current.view);
-                LeaderboardView view = buildLeaderboard(config, standings,
-                        participants.findAllByOrderBySortOrderAscIdAsc(), previousRanks, now);
-                sourceCache = new SourceCache(config.getContestId(), standings, now);
-                snapshotCache = new SnapshotCache(config.getContestId(), view, now);
-                return view;
+                target.succeeded(writeStandings(standings), now);
+                snapshots.saveAndFlush(target);
+                return buildLeaderboard(config, standings, previousRanks, now,
+                        false, false, null, 0);
             } catch (RuntimeException ex) {
                 String error = publicError(ex);
-                if (current != null && current.view.dataAvailable()) {
-                    LeaderboardView stale = withFlags(current.view, true, false, error, 0);
-                    snapshotCache = new SnapshotCache(config.getContestId(), stale, current.loadedAt);
-                    return stale;
+                target.failed(error, now);
+                snapshots.saveAndFlush(target);
+                if (previous != null) {
+                    return buildLeaderboard(config, previous, previousRanks, target.getSyncedAt(),
+                            true, false, error, 0);
                 }
-                LeaderboardView failed = errorLeaderboard(config, error);
-                snapshotCache = new SnapshotCache(config.getContestId(), failed, now);
-                return failed;
+                return errorLeaderboard(config, error, 0);
             }
         } finally {
             refreshLock.unlock();
         }
     }
 
-    private void rebuildProjection() {
-        refreshLock.lock();
-        try {
-            Optional<AtcoderLeaderboardConfig> found = configs.findById(AtcoderLeaderboardConfig.SINGLETON_ID);
-            if (found.isEmpty() || sourceCache == null
-                    || !sourceCache.contestId.equals(found.get().getContestId())) {
-                snapshotCache = null;
-                return;
-            }
-            Map<Long, Integer> previousRanks = ranks(snapshotCache == null ? null : snapshotCache.view);
-            LeaderboardView view = buildLeaderboard(found.get(), sourceCache.standings,
-                    participants.findAllByOrderBySortOrderAscIdAsc(), previousRanks, sourceCache.loadedAt);
-            snapshotCache = new SnapshotCache(sourceCache.contestId, view, sourceCache.loadedAt);
-        } finally {
-            refreshLock.unlock();
+    private boolean shouldAutoRefresh(AtcoderLeaderboardConfig config,
+                                      AtcoderLeaderboardSnapshot snapshot, Instant now) {
+        String status = AtcoderContestSupport.status(config, now);
+        if ("RUNNING".equals(status)) {
+            if (snapshot == null || snapshot.getLastAttemptAt() == null) return true;
+            Instant reference = snapshot.getSyncedAt() == null
+                    ? snapshot.getLastAttemptAt() : snapshot.getSyncedAt();
+            return remainingCooldown(snapshot, now) == 0
+                    && (config.getUpdatedAt().isAfter(reference)
+                    || !reference.plus(CACHE_TTL).isAfter(now));
         }
+        if ("FINISHED".equals(status)) {
+            return config.getEndAt() != null && (snapshot == null || snapshot.getLastAttemptAt() == null
+                    || snapshot.getLastAttemptAt().isBefore(config.getEndAt()));
+        }
+        return false;
+    }
+
+    private LeaderboardView storedView(AtcoderLeaderboardConfig config,
+                                        AtcoderLeaderboardSnapshot snapshot,
+                                        boolean refreshing, int cooldown) {
+        AtcoderStandings.Snapshot standings = readStandings(snapshot);
+        if (standings == null) {
+            String error = snapshot == null ? null : snapshot.getLastError();
+            return errorLeaderboard(config,
+                    error == null ? "尚无可用的排行榜快照" : error, cooldown);
+        }
+        String error = snapshot.getLastError();
+        return buildLeaderboard(config, standings, Map.of(), snapshot.getSyncedAt(),
+                error != null, refreshing, error, cooldown);
     }
 
     private LeaderboardView buildLeaderboard(AtcoderLeaderboardConfig config,
                                              AtcoderStandings.Snapshot standings,
-                                             List<AtcoderLeaderboardParticipant> participantList,
                                              Map<Long, Integer> previousRanks,
-                                             Instant syncedAt) {
+                                             Instant syncedAt,
+                                             boolean stale, boolean refreshing,
+                                             String error, int cooldown) {
+        List<AtcoderLeaderboardParticipant> participantList = participants.findAllByOrderBySortOrderAscIdAsc();
         List<Candidate> candidates = participantList.stream()
                 .map(participant -> new Candidate(participant,
                         standings.entriesByUsernameKey().get(participant.getAtcoderUsernameKey())))
@@ -380,12 +367,17 @@ public class AtcoderLeaderboardService {
                 assignedRank = classRank;
                 previousCandidate = candidate;
             }
-            entries.add(toEntryView(candidate, assignedRank, previousRanks.get(candidate.participant.getId()), displayTasks));
+            entries.add(toEntryView(candidate, assignedRank,
+                    previousRanks.get(candidate.participant.getId()), displayTasks));
         }
 
         ContestView contest = toContestView(config);
-        return new LeaderboardView(true, true, contest, tasks, List.copyOf(entries), entries.size(),
-                rankedCount, syncedAt, false, false, null, CLIENT_REFRESH_SECONDS, 0);
+        boolean autoRefresh = "RUNNING".equals(contest.status());
+        return new LeaderboardView(true, true, contest,
+                AtcoderContestSupport.options(configs, config.getContestId(), clock),
+                tasks, List.copyOf(entries), entries.size(), rankedCount, syncedAt,
+                stale, refreshing, error, autoRefresh,
+                autoRefresh ? CLIENT_REFRESH_SECONDS : 0, cooldown);
     }
 
     private EntryView toEntryView(Candidate candidate, Integer classRank, Integer previousRank,
@@ -436,17 +428,13 @@ public class AtcoderLeaderboardService {
                 .map(task -> toTaskView(config.getContestId(), task)).toList();
         return new AdminConfigView(true, config.getContestId(), config.getDisplayTitle(),
                 config.getOfficialTitle(), config.getStartAt(), config.getEndAt(), config.getUpdatedAt(),
-                gateway.cookieStatus().name(), gateway.cookieSource(), gateway.cookieUpdatedAt(), tasks);
+                gateway.cookieStatus().name(), gateway.cookieSource(), gateway.cookieUpdatedAt(), tasks,
+                AtcoderContestSupport.options(configs, config.getContestId(), clock));
     }
 
     private ContestView toContestView(AtcoderLeaderboardConfig config) {
-        Instant now = clock.instant();
-        String status = "UNKNOWN";
-        if (config.getStartAt() != null && now.isBefore(config.getStartAt())) status = "UPCOMING";
-        else if (config.getEndAt() != null && !now.isBefore(config.getEndAt())) status = "FINISHED";
-        else if (config.getStartAt() != null && config.getEndAt() != null) status = "RUNNING";
         return new ContestView(config.getContestId(), config.getDisplayTitle(), config.getOfficialTitle(),
-                config.getStartAt(), config.getEndAt(), status,
+                config.getStartAt(), config.getEndAt(), AtcoderContestSupport.status(config, clock.instant()),
                 "https://atcoder.jp/contests/" + config.getContestId() + "/standings");
     }
 
@@ -480,11 +468,11 @@ public class AtcoderLeaderboardService {
     }
 
     private LeaderboardView emptyLeaderboard() {
-        return new LeaderboardView(false, false, null, List.of(), List.of(), 0, 0,
-                null, false, false, null, CLIENT_REFRESH_SECONDS, 0);
+        return new LeaderboardView(false, false, null, List.of(), List.of(), List.of(), 0, 0,
+                null, false, false, null, false, 0, 0);
     }
 
-    private LeaderboardView errorLeaderboard(AtcoderLeaderboardConfig config, String error) {
+    private LeaderboardView errorLeaderboard(AtcoderLeaderboardConfig config, String error, int cooldown) {
         List<TaskView> tasks = readTasks(config.getTasksJson()).stream()
                 .map(task -> toTaskView(config.getContestId(), task)).toList();
         List<EntryView> entries = participants.findAllByOrderBySortOrderAscIdAsc().stream()
@@ -493,15 +481,12 @@ public class AtcoderLeaderboardService {
                         null, new MovementView("NONE", 0), "NOT_STARTED",
                         tasks.stream().map(task -> emptyTaskResult(task.id())).toList()))
                 .toList();
-        return new LeaderboardView(true, false, toContestView(config), tasks, entries, entries.size(), 0,
-                null, false, false, error, CLIENT_REFRESH_SECONDS, 0);
-    }
-
-    private static LeaderboardView withFlags(LeaderboardView view, boolean stale, boolean refreshing,
-                                             String error, int cooldown) {
-        return new LeaderboardView(view.configured(), view.dataAvailable(), view.contest(), view.tasks(),
-                view.entries(), view.participantCount(), view.rankedCount(), view.lastSyncedAt(),
-                stale, refreshing, error, view.refreshAfterSeconds(), cooldown);
+        ContestView contest = toContestView(config);
+        boolean autoRefresh = "RUNNING".equals(contest.status());
+        return new LeaderboardView(true, false, contest,
+                AtcoderContestSupport.options(configs, config.getContestId(), clock),
+                tasks, entries, entries.size(), 0, null, false, false, error,
+                autoRefresh, autoRefresh ? CLIENT_REFRESH_SECONDS : 0, cooldown);
     }
 
     private Comparator<Candidate> candidateComparator() {
@@ -548,11 +533,6 @@ public class AtcoderLeaderboardService {
         return new MovementView("SAME", 0);
     }
 
-    private Map<Long, Integer> ranksForContest(String contestId) {
-        SnapshotCache cache = matchingSnapshot(contestId);
-        return ranks(cache == null ? null : cache.view);
-    }
-
     private static Map<Long, Integer> ranks(LeaderboardView view) {
         Map<Long, Integer> result = new HashMap<>();
         if (view == null) return result;
@@ -562,23 +542,19 @@ public class AtcoderLeaderboardService {
         return result;
     }
 
-    private SnapshotCache matchingSnapshot(String contestId) {
-        SnapshotCache value = snapshotCache;
-        return value != null && value.contestId.equals(contestId) ? value : null;
-    }
-
-    private boolean isFresh(AtcoderLeaderboardConfig config, Instant now) {
-        SourceCache source = sourceCache;
-        return source != null && source.contestId.equals(config.getContestId())
-                && !config.getUpdatedAt().isAfter(source.loadedAt)
-                && source.loadedAt.plus(CACHE_TTL).isAfter(now);
-    }
-
-    private int remainingCooldown(Instant now) {
-        Instant readyAt = lastAttemptAt.plus(MANUAL_REFRESH_COOLDOWN);
+    private int remainingCooldown(AtcoderLeaderboardSnapshot snapshot, Instant now) {
+        if (snapshot.getLastAttemptAt() == null) return 0;
+        Instant readyAt = snapshot.getLastAttemptAt().plus(MANUAL_REFRESH_COOLDOWN);
         if (!readyAt.isAfter(now)) return 0;
         long millis = Duration.between(now, readyAt).toMillis();
         return (int) Math.max(1, (millis + 999) / 1000);
+    }
+
+    private void persistSuccessfulSnapshot(String contestId, AtcoderStandings.Snapshot standings, Instant now) {
+        AtcoderLeaderboardSnapshot snapshot = snapshots.findById(contestId)
+                .orElseGet(() -> new AtcoderLeaderboardSnapshot(contestId));
+        snapshot.succeeded(writeStandings(standings), now);
+        snapshots.saveAndFlush(snapshot);
     }
 
     private String writeTasks(List<AtcoderStandings.Task> tasks) {
@@ -591,12 +567,17 @@ public class AtcoderLeaderboardService {
         catch (Exception ex) { return List.of(); }
     }
 
-    private static String normalizeContestId(String value) {
-        String contestId = value == null ? "" : value.trim();
-        if (!CONTEST_ID.matcher(contestId).matches()) {
-            throw new IllegalArgumentException("Contest ID 只能包含字母、数字、下划线和短横线，最长 64 位");
+    private String writeStandings(AtcoderStandings.Snapshot standings) {
+        try { return mapper.writeValueAsString(standings); }
+        catch (JsonProcessingException ex) { throw new IllegalStateException("排行榜快照保存失败", ex); }
+    }
+
+    private AtcoderStandings.Snapshot readStandings(AtcoderLeaderboardSnapshot snapshot) {
+        if (snapshot == null || snapshot.getStandingsJson() == null || snapshot.getStandingsJson().isBlank()) {
+            return null;
         }
-        return contestId.toLowerCase(Locale.ROOT);
+        try { return mapper.readValue(snapshot.getStandingsJson(), AtcoderStandings.Snapshot.class); }
+        catch (Exception ex) { return null; }
     }
 
     private static String normalizeUsername(String value) {
@@ -645,6 +626,4 @@ public class AtcoderLeaderboardService {
     }
 
     private record Candidate(AtcoderLeaderboardParticipant participant, AtcoderStandings.Entry entry) {}
-    private record SourceCache(String contestId, AtcoderStandings.Snapshot standings, Instant loadedAt) {}
-    private record SnapshotCache(String contestId, LeaderboardView view, Instant loadedAt) {}
 }

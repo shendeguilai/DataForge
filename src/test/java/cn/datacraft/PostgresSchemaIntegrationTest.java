@@ -61,8 +61,9 @@ class PostgresSchemaIntegrationTest {
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.tables
                 WHERE table_schema = 'public'
-                  AND table_name IN ('atcoder_leaderboard_config', 'atcoder_leaderboard_participants', 'atcoder_cookie_config')
-                """, Integer.class)).isEqualTo(3);
+                  AND table_name IN ('atcoder_leaderboard_config', 'atcoder_leaderboard_snapshots',
+                    'atcoder_leaderboard_participants', 'atcoder_cookie_config', 'atcoder_problem_translations')
+                """, Integer.class)).isEqualTo(5);
     }
 
     @Test

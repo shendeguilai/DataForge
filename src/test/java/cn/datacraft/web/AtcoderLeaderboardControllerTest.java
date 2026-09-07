@@ -53,7 +53,8 @@ class AtcoderLeaderboardControllerTest {
         mvc.perform(get("/api/tools/atcoder-leaderboard").with(anonymous()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.configured").value(false))
-                .andExpect(jsonPath("$.refreshAfterSeconds").value(60));
+                .andExpect(jsonPath("$.autoRefresh").value(false))
+                .andExpect(jsonPath("$.refreshAfterSeconds").value(0));
         mvc.perform(post("/api/tools/atcoder-leaderboard/refresh").with(anonymous()))
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/tools/atcoder-leaderboard/refresh").with(user("student").roles("USER")))

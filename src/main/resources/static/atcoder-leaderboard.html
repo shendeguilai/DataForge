@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="DataForge AtCoder 单场比赛实时排行榜">
+    <meta name="description" content="DataForge AtCoder 多场比赛实时排行榜">
     <title>AtCoder 实时排行榜 · DataForge</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/portal.css">
@@ -34,9 +34,10 @@
             <a class="text-btn leaderboard-back" href="/tools.html">← 返回工具列表</a>
             <div class="eyebrow"><span></span> CONTEST LIVE</div>
             <div class="title-line"><h1 id="contestTitle">AtCoder 实时排行榜</h1><span class="contest-state unknown" id="contestState">等待配置</span></div>
-            <p id="contestMeta">为已录入选手整理的单场比赛实时赛况。</p>
+            <p id="contestMeta">为已录入选手整理的多场比赛排行。</p>
         </div>
         <div class="refresh-controls">
+            <label class="contest-picker" for="contestSelector"><span>比赛场次</span><select id="contestSelector" disabled><option>等待配置</option></select></label>
             <a class="problem-button disabled" id="problemButton" href="/atcoder-problems.html" aria-disabled="true"><span aria-hidden="true">译</span><b>题面暂未准备</b></a>
             <div class="sync-state"><span class="live-dot"></span><div><strong id="syncLabel">尚未同步</strong><small id="countdownLabel">每 60 秒自动刷新</small></div></div>
             <button class="refresh-button hidden" id="refreshButton" type="button" title="管理员手动刷新 AtCoder 数据">
@@ -51,7 +52,7 @@
         <div><span>已录入</span><strong><b id="participantTotal">0</b><small> 名选手</small></strong></div>
         <div><span>已上榜</span><strong><b id="rankedTotal">0</b><small> 人有赛况</small></strong></div>
         <div><span>领跑选手</span><strong id="leaderName">—</strong></div>
-        <div><span>刷新频率</span><strong><b>60</b><small> 秒</small></strong></div>
+        <div><span>刷新状态</span><strong id="refreshMode"><b>60</b><small> 秒</small></strong></div>
     </section>
 
     <section class="board-panel">
@@ -70,7 +71,7 @@
     </section>
 </main>
 
-<footer><span>DataForge / AtCoder Leaderboard</span><span>赛时数据每 60 秒同步一次。</span></footer>
+<footer><span>DataForge / AtCoder Leaderboard</span><span id="leaderboardFooter">仅进行中的比赛每 60 秒同步一次。</span></footer>
 <div id="toast" class="toast" role="alert"></div>
 <script src="/portal.js"></script>
 <script src="/atcoder-leaderboard.js"></script>

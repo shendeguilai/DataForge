@@ -10,6 +10,9 @@ public final class AtcoderLeaderboardDtos {
     public record ContestView(String id, String title, String officialTitle, Instant startAt,
                               Instant endAt, String status, String url) {}
 
+    public record ContestOptionView(String id, String title, String officialTitle, Instant startAt,
+                                    Instant endAt, String status, boolean selected) {}
+
     public record TaskView(String id, String label, String name, BigDecimal maxScore, String url) {}
 
     public record MovementView(String type, int places) {}
@@ -24,14 +27,17 @@ public final class AtcoderLeaderboardDtos {
                             MovementView movement, String status, List<TaskResultView> taskResults) {}
 
     public record LeaderboardView(boolean configured, boolean dataAvailable, ContestView contest,
+                                  List<ContestOptionView> contests,
                                   List<TaskView> tasks, List<EntryView> entries, int participantCount,
                                   int rankedCount, Instant lastSyncedAt, boolean stale, boolean refreshing,
-                                  String error, int refreshAfterSeconds, int refreshCooldownSeconds) {}
+                                  String error, boolean autoRefresh, int refreshAfterSeconds,
+                                  int refreshCooldownSeconds) {}
 
     public record AdminConfigView(boolean configured, String contestId, String displayTitle,
                                   String officialTitle, Instant startAt, Instant endAt,
                                   Instant updatedAt, String cookieStatus, String cookieSource,
-                                  Instant cookieUpdatedAt, List<TaskView> tasks) {}
+                                  Instant cookieUpdatedAt, List<TaskView> tasks,
+                                  List<ContestOptionView> contests) {}
 
     public record ParticipantView(Long id, String displayName, String atcoderUsername,
                                   int sortOrder, Instant createdAt) {}
@@ -53,5 +59,6 @@ public final class AtcoderLeaderboardDtos {
 
     public static class CookieRequest {
         public String cookie;
+        public String contestId;
     }
 }

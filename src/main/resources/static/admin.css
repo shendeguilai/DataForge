@@ -259,6 +259,7 @@
 
 body.admin-body { background: var(--df-bg); background-image: none; color: var(--df-text); }
 .admin-main, .admin-hero, .admin-panel, .article-manager, .leaderboard-admin-grid, .table-wrap { min-width: 0; }
+.leaderboard-config-form select{min-width:0;border:1px solid var(--df-border);border-radius:8px;background:var(--df-surface);padding:11px 12px;outline:none}.admin-contest-picker select{width:100%;color:var(--df-text);font-size:11px;font-weight:700}.admin-contest-picker select:focus{border-color:var(--df-brand);box-shadow:0 0 0 3px rgba(63,111,159,.12)}
 .admin-panel { border-color: var(--df-border); background: var(--df-surface); }
 .table-wrap { max-width: 100%; overflow-x: auto; }
 .table-wrap table { min-width: 760px; }

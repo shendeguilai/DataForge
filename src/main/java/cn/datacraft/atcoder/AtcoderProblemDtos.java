@@ -3,6 +3,8 @@ package cn.datacraft.atcoder;
 import java.time.Instant;
 import java.util.List;
 
+import cn.datacraft.atcoder.AtcoderLeaderboardDtos.ContestOptionView;
+
 public final class AtcoderProblemDtos {
     private AtcoderProblemDtos() {}
 
@@ -17,7 +19,8 @@ public final class AtcoderProblemDtos {
 
     public record ProblemOverviewView(boolean configured, ProblemContestView contest, String status,
                                       int totalCount, int readyCount, int failedCount, boolean running,
-                                      ImportedBundleView importedBundle, List<ProblemTaskView> tasks) {}
+                                      ImportedBundleView importedBundle, List<ProblemTaskView> tasks,
+                                      List<ContestOptionView> contests) {}
 
     public record ProblemDetailView(ProblemContestView contest, ProblemTaskView task,
                                     String sourceHtml, String translatedHtml,

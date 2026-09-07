@@ -40,8 +40,8 @@ public class AdminAtcoderLeaderboardController {
     }
 
     @GetMapping("/config")
-    public AdminConfigView config() {
-        return leaderboard.getConfig();
+    public AdminConfigView config(@RequestParam(required = false) String contestId) {
+        return leaderboard.getConfig(contestId);
     }
 
     @PutMapping("/config")
@@ -51,12 +51,12 @@ public class AdminAtcoderLeaderboardController {
 
     @PutMapping("/cookie")
     public AdminConfigView updateCookie(@RequestBody CookieRequest request) {
-        return leaderboard.updateCookie(request.cookie);
+        return leaderboard.updateCookie(request.cookie, request.contestId);
     }
 
     @DeleteMapping("/cookie")
-    public AdminConfigView clearManagedCookie() {
-        return leaderboard.clearManagedCookie();
+    public AdminConfigView clearManagedCookie(@RequestParam(required = false) String contestId) {
+        return leaderboard.clearManagedCookie(contestId);
     }
 
     @GetMapping("/participants")
@@ -88,28 +88,29 @@ public class AdminAtcoderLeaderboardController {
     }
 
     @GetMapping("/translations")
-    public ProblemOverviewView translations() {
-        return translations.adminOverview();
+    public ProblemOverviewView translations(@RequestParam(required = false) String contestId) {
+        return translations.adminOverview(contestId);
     }
 
     @PostMapping("/translations")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView translateAll() {
-        return translations.startAll(false);
+    public ProblemOverviewView translateAll(@RequestParam(required = false) String contestId) {
+        return translations.startAll(contestId, false);
     }
 
     @PostMapping("/translations/retranslate")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView retranslateAll() {
-        return translations.startAll(true);
+    public ProblemOverviewView retranslateAll(@RequestParam(required = false) String contestId) {
+        return translations.startAll(contestId, true);
     }
 
     @PostMapping(value = "/translations/pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView translatePdf(@RequestParam("file") MultipartFile file) {
+    public ProblemOverviewView translatePdf(@RequestParam("file") MultipartFile file,
+                                            @RequestParam(required = false) String contestId) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择要上传的 PDF 文件");
         try {
-            return translations.importPdf(file.getOriginalFilename(), file.getBytes());
+            return translations.importPdf(contestId, file.getOriginalFilename(), file.getBytes());
         } catch (IOException ex) {
             throw new IllegalArgumentException("PDF 上传内容读取失败", ex);
         }
@@ -117,10 +118,11 @@ public class AdminAtcoderLeaderboardController {
 
     @PostMapping(value = "/translations/markdown", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView translateMarkdown(@RequestParam("file") MultipartFile file) {
+    public ProblemOverviewView translateMarkdown(@RequestParam("file") MultipartFile file,
+                                                 @RequestParam(required = false) String contestId) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择要上传的 Markdown 文件");
         try {
-            return translations.importMarkdown(file.getOriginalFilename(), file.getBytes());
+            return translations.importMarkdown(contestId, file.getOriginalFilename(), file.getBytes());
         } catch (IOException ex) {
             throw new IllegalArgumentException("Markdown 上传内容读取失败", ex);
         }
@@ -128,31 +130,35 @@ public class AdminAtcoderLeaderboardController {
 
     @PostMapping("/translations/markdown/translate")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView translateImportedMarkdown() {
-        return translations.translateImportedMarkdownAll();
+    public ProblemOverviewView translateImportedMarkdown(@RequestParam(required = false) String contestId) {
+        return translations.translateImportedMarkdownAll(contestId);
     }
 
     @PostMapping("/translations/{taskId}")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public ProblemOverviewView retryTranslation(@PathVariable String taskId) {
-        return translations.retryTask(taskId);
+    public ProblemOverviewView retryTranslation(@PathVariable String taskId,
+                                                @RequestParam(required = false) String contestId) {
+        return translations.retryTask(contestId, taskId);
     }
 
     @GetMapping("/translations/{taskId}")
-    public AdminProblemDetailView translationDetail(@PathVariable String taskId) {
-        return translations.adminDetail(taskId);
+    public AdminProblemDetailView translationDetail(@PathVariable String taskId,
+                                                    @RequestParam(required = false) String contestId) {
+        return translations.adminDetail(contestId, taskId);
     }
 
     @PutMapping("/translations/{taskId}")
     public AdminProblemDetailView saveTranslation(@PathVariable String taskId,
+                                                   @RequestParam(required = false) String contestId,
                                                    @RequestBody TranslationEditRequest request) {
-        return translations.saveManualTranslation(taskId, request.translatedHtml);
+        return translations.saveManualTranslation(contestId, taskId, request.translatedHtml);
     }
 
     @PutMapping("/translations/{taskId}/manual")
     public AdminProblemDetailView importManualTranslation(@PathVariable String taskId,
+                                                          @RequestParam(required = false) String contestId,
                                                           @RequestBody ManualTranslationRequest request) {
-        return translations.saveStructuredManualTranslation(taskId, request.content);
+        return translations.saveStructuredManualTranslation(contestId, taskId, request.content);
     }
 
     public static class TranslationEditRequest {

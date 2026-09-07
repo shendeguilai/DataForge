@@ -6,6 +6,7 @@ import cn.datacraft.atcoder.AtcoderProblemTranslationService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -18,12 +19,13 @@ public class AtcoderProblemController {
     }
 
     @GetMapping
-    public ProblemOverviewView overview() {
-        return translations.publicOverview();
+    public ProblemOverviewView overview(@RequestParam(required = false) String contestId) {
+        return translations.publicOverview(contestId);
     }
 
     @GetMapping("/{taskId}")
-    public ProblemDetailView detail(@PathVariable String taskId) {
-        return translations.detail(taskId);
+    public ProblemDetailView detail(@PathVariable String taskId,
+                                    @RequestParam(required = false) String contestId) {
+        return translations.detail(contestId, taskId);
     }
 }
