@@ -149,6 +149,7 @@ public class CspPaperStudioClient {
             case 413 -> HttpStatus.PAYLOAD_TOO_LARGE;
             case 422 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case 429 -> HttpStatus.TOO_MANY_REQUESTS;
+            case 504 -> HttpStatus.GATEWAY_TIMEOUT;
             default -> code >= 500 ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
         };
         String message = "CSP Paper Studio 请求失败";

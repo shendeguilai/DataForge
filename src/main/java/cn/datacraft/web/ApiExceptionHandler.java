@@ -29,6 +29,8 @@ public class ApiExceptionHandler {
         return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 25MB");
     }
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
-        return ResponseEntity.status(status).body(Collections.singletonMap("error", message));
+        return ResponseEntity.status(status)
+                .cacheControl(CacheControl.noStore())
+                .body(Collections.singletonMap("error", message));
     }
 }

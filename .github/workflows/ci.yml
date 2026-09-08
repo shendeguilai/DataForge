@@ -36,3 +36,34 @@ jobs:
         run: docker compose -f compose.prod.yml config >/dev/null
       - name: Build production image
         run: docker build -t dataforge:ci .
+      - name: Build CSP Paper Studio image
+        run: docker build -t dataforge-csp-studio:ci services/csp-paper-studio
+      - name: Run CSP Paper Studio regression tests
+        run: >-
+          docker run --rm --entrypoint python
+          -v "${GITHUB_WORKSPACE}:/workspace:ro"
+          -w /workspace/services/csp-paper-studio
+          -e PYTHONPATH=/app:/workspace/services/csp-paper-studio
+          dataforge-csp-studio:ci
+          -m unittest discover -p 'test_*.py' -v
+      - name: Check CSP Paper Studio health
+        run: |
+          set -Eeuo pipefail
+          container="csp-studio-ci"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$container" --read-only \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            dataforge-csp-studio:ci >/dev/null
+          for attempt in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$container")
+            if [[ "$status" == healthy ]]; then
+              exit 0
+            fi
+            if [[ "$status" == unhealthy ]]; then
+              docker logs "$container"
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs "$container"
+          exit 1

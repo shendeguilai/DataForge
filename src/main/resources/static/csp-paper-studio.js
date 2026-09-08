@@ -5,12 +5,13 @@
   const state = {
     filename: '', preamble: '', modules: [], analysis: null, selected: null,
     originals: new Map(), filter: 'all', timer: null, authenticated: false,
-    analysisController: null, analysisRevision: 0
+    analysisController: null, analysisRevision: 0, analysisPending: false
   };
   const els = {
     fileInput: $('#fileInput'), openBtn: $('#openBtn'), sampleBtn: $('#sampleBtn'),
     downloadMdBtn: $('#downloadMdBtn'), exportBtn: $('#exportBtn'), filename: $('#filename'),
     summary: $('#summary'), moduleCount: $('#moduleCount'), moduleList: $('#moduleList'),
+    diagnostics: $('#studioDiagnostics'),
     preview: $('#preview'), previewTitle: $('#previewTitle'), previewMeta: $('#previewMeta'),
     moduleStatus: $('#moduleStatus'), issues: $('#issues'), editor: $('#editor'),
     restoreBtn: $('#restoreBtn'), numbering: $('#numbering'), toast: $('#toast'),
@@ -38,11 +39,16 @@
   function setAuthenticated(authenticated) {
     state.authenticated = authenticated;
     const loaded = Boolean(state.modules.length);
+    const analysisErrors = Number(state.analysis?.counts?.error || 0) > 0
+      || (Array.isArray(state.analysis?.summary_errors) && state.analysis.summary_errors.length > 0);
+    const blockedExport = !loaded || !state.analysis || analysisErrors
+      || Boolean(state.analysis?.coverage?.dropped_blocks)
+      || state.analysisPending;
     els.openBtn.disabled = !authenticated;
     els.sampleBtn.disabled = !authenticated;
     els.numbering.disabled = !authenticated;
     els.downloadMdBtn.disabled = !authenticated || !loaded;
-    els.exportBtn.disabled = !authenticated || !loaded;
+    els.exportBtn.disabled = !authenticated || blockedExport;
     els.editor.disabled = !authenticated || !loaded;
     els.restoreBtn.disabled = !authenticated || !loaded;
     els.privacy.classList.toggle('authenticated', authenticated);
@@ -93,14 +99,38 @@
   }
 
   function splitSource(markdown) {
-    const pattern = /^## 第\s*(\d+)\s*题\s*$/gm;
-    const matches = [...markdown.matchAll(pattern)];
+    markdown = String(markdown).replace(/^\uFEFF/, '');
+    // A code sample may contain a comment such as "## 第 1 题".  Only
+    // headings outside fenced blocks delimit editor modules; otherwise an
+    // innocent source line can split the whole document in two.
+    const matches = [];
+    const linePattern = /[^\r\n]*(?:\r\n|\n|\r|$)/g;
+    let inFence = null;
+    let lineMatch;
+    while ((lineMatch = linePattern.exec(markdown))) {
+      const fullLine = lineMatch[0];
+      if (!fullLine) break;
+      const line = fullLine.replace(/(?:\r\n|\n|\r)$/, '');
+      const opening = line.match(/^[ \t]*(`{3,}|~{3,})[ \t]*(.*)$/);
+      if (inFence) {
+        const marker = inFence[0];
+        const closing = new RegExp(`^[ \\t]*${marker[0]}{${marker.length},}[ \\t]*$`).test(line);
+        if (closing) inFence = null;
+        continue;
+      }
+      if (opening) {
+        inFence = opening[1];
+        continue;
+      }
+      const heading = line.match(/^[ \t]*## 第\s*(\d+)\s*题\s*$/);
+      if (heading) matches.push({index: lineMatch.index, length: line.length, number: Number(heading[1])});
+    }
     if (!matches.length) return {preamble: markdown, modules: []};
     const modules = [];
     for (let index = 0; index < matches.length; index++) {
-      const start = matches[index].index + matches[index][0].length;
+      const start = matches[index].index + matches[index].length;
       const end = index + 1 < matches.length ? matches[index + 1].index : markdown.length;
-      modules.push({number: Number(matches[index][1]), body: markdown.slice(start, end)});
+      modules.push({number: matches[index].number, body: markdown.slice(start, end)});
     }
     return {preamble: markdown.slice(0, matches[0].index), modules};
   }
@@ -122,6 +152,8 @@
     if (state.analysisController) state.analysisController.abort();
     const controller = new AbortController();
     state.analysisController = controller;
+    state.analysisPending = true;
+    setAuthenticated(state.authenticated);
     const response = await apiFetch(`${API_ROOT}/analyze`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -130,7 +162,15 @@
     });
     const analysis = await response.json();
     if (revision !== state.analysisRevision) return false;
+    if (analysis.schema_version !== 2 || !analysis.coverage
+        || !Number.isInteger(analysis.coverage.dropped_blocks)) {
+      state.analysis = null;
+      state.analysisPending = false;
+      setAuthenticated(state.authenticated);
+      throw new Error('解析服务版本不匹配，请重启或更新 CSP 服务后重试。当前编辑内容已保留。');
+    }
     state.analysis = analysis;
+    state.analysisPending = false;
     updateSummary();
     renderList();
     if (selectAfter) {
@@ -144,14 +184,41 @@
 
   function updateSummary() {
     const analysis = state.analysis;
-    const counts = analysis.counts;
-    els.moduleCount.textContent = analysis.modules.length;
+    const counts = analysis.counts || {ok: 0, warning: 0, error: 0};
+    const modules = Array.isArray(analysis.modules) ? analysis.modules : [];
+    els.moduleCount.textContent = modules.length;
     els.filename.textContent = state.filename || '未命名.md';
-    const group = `${analysis.meta.year} CSP-${analysis.meta.group}`;
-    const extra = analysis.summary_errors.length ? ` · 整卷错误 ${analysis.summary_errors.length}` : '';
-    els.summary.textContent = `${group} · 正常 ${counts.ok} · 提醒 ${counts.warning} · 错误 ${counts.error}${extra}`;
+    const meta = analysis.meta || {};
+    const group = `${meta.year || '20XX'} CSP-${meta.group || 'J'}`;
+    const summaryErrors = Array.isArray(analysis.summary_errors) ? analysis.summary_errors : [];
+    const extra = summaryErrors.length ? ` · 整卷错误 ${summaryErrors.length}` : '';
+    const format = analysis.detected_format === 'standard-v1' ? '标准模板' : '旧版兼容';
+    const coverage = analysis.coverage ? ` · 区块 ${analysis.coverage.rendered_blocks}/${analysis.coverage.source_blocks}` : '';
+    els.summary.textContent = `${group} · ${format} · 正常 ${counts.ok} · 提醒 ${counts.warning} · 错误 ${counts.error}${coverage}${extra}`;
+    const diagnostics = Array.isArray(analysis.diagnostics) ? [...analysis.diagnostics] : [];
+    if (analysis.migration_hint) {
+      diagnostics.push({severity: 'warning', code: 'FORMAT_MIGRATION', message: analysis.migration_hint});
+    }
+    renderDiagnostics(diagnostics);
     els.workspace.classList.remove('empty');
     setAuthenticated(state.authenticated);
+  }
+
+  function renderDiagnostics(diagnostics = []) {
+    if (!els.diagnostics) return;
+    const values = Array.isArray(diagnostics) ? diagnostics : [];
+    const unique = values.filter((item, index, all) => {
+      const key = `${item.severity || item.type || 'warning'}|${item.code || ''}|${item.line || ''}|${item.message || ''}`;
+      return all.findIndex(candidate => `${candidate.severity || candidate.type || 'warning'}|${candidate.code || ''}|${candidate.line || ''}|${candidate.message || ''}` === key) === index;
+    });
+    els.diagnostics.hidden = !unique.length;
+    els.diagnostics.innerHTML = unique.map(item => {
+      const severity = item.severity === 'error' || item.type === 'error' ? 'error' : 'warning';
+      const label = severity === 'error' ? '错误' : '提醒';
+      const line = Number.isFinite(Number(item.line)) && Number(item.line) > 0 ? `第 ${Number(item.line)} 行` : '';
+      const code = item.code ? `［${esc(item.code)}］` : '';
+      return `<span class="studio-diagnostic ${severity}">${label}${line ? `（${line}）` : ''}${code}：${esc(item.message || '')}</span>`;
+    }).join('');
   }
 
   function kindName(kind, number) {
@@ -162,8 +229,13 @@
   function renderList() {
     const modules = state.analysis?.modules || [];
     const visible = modules.filter(module => state.filter === 'all' || module.kind === state.filter);
-    els.moduleList.innerHTML = visible.map(module => `<button class="module-item ${module.number === state.selected ? 'active' : ''}" data-no="${module.number}" type="button">
-      <span class="dot ${module.status}"></span><span class="module-label"><b>${kindName(module.kind, module.number)}</b><small>${kindSub(module.kind)}${module.errors[0] ? ' · ' + esc(module.errors[0]) : ''}</small></span></button>`).join('') || '<div class="empty-side">当前筛选下没有模块。</div>';
+    els.moduleList.innerHTML = visible.map(module => {
+      const errors = Array.isArray(module.errors) ? module.errors : [];
+      const firstError = errors[0];
+      const errorText = typeof firstError === 'string' ? firstError : firstError?.message;
+      return `<button class="module-item ${module.number === state.selected ? 'active' : ''}" data-no="${module.number}" type="button">
+      <span class="dot ${module.status}"></span><span class="module-label"><b>${kindName(module.kind, module.number)}</b><small>${kindSub(module.kind)}${errorText ? ' · ' + esc(errorText) : ''}</small></span></button>`;
+    }).join('') || '<div class="empty-side">当前筛选下没有模块。</div>';
     els.moduleList.querySelectorAll('.module-item').forEach(button => button.addEventListener('click', () => {
       state.selected = Number(button.dataset.no);
       renderList();
@@ -184,21 +256,80 @@
     return `<span class="math">${output}</span>`;
   }
 
+  function stripMathFence(value = '') {
+    const text = String(value).trim();
+    const pairs = [['$$', '$$'], ['\\[', '\\]'], ['$', '$'], ['\\(', '\\)']];
+    for (const [open, close] of pairs) {
+      if (text.startsWith(open) && text.endsWith(close) && text.length >= open.length + close.length) {
+        return text.slice(open.length, text.length - close.length).trim();
+      }
+    }
+    return text;
+  }
+
   function inline(value = '') {
     let output = '', position = 0;
-    const pattern = /(\$[^$\n]*\$|`[^`\n]*`)/g;
+    // Keep the preview in sync with the Word renderer: display math and
+    // escaped \(...\)/\[...\] delimiters must be recognized before the
+    // single-dollar form.  Code spans are emitted literally, so a price such
+    // as `cost=$5` can never become a formula.
+    const pattern = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([^\n]*?\\\)|\$[^$\n]*\$|`[^`\n]*`)/g;
     let match;
     while ((match = pattern.exec(value))) {
       output += esc(value.slice(position, match.index));
       const token = match[0];
-      output += token[0] === '$' ? texLite(token.slice(1, -1)) : `<code>${esc(token.slice(1, -1))}</code>`;
+      if (token[0] === '`') {
+        output += `<code>${esc(token.slice(1, -1))}</code>`;
+      } else {
+        let raw;
+        if (token.startsWith('$$')) raw = token.slice(2, -2);
+        else if (token.startsWith('\\[')) raw = token.slice(2, -2);
+        else if (token.startsWith('\\(')) raw = token.slice(2, -2);
+        else raw = token.slice(1, -1);
+        output += texLite(raw);
+      }
       position = match.index + token.length;
     }
     return output + esc(value.slice(position));
   }
 
   function codeTable(meta) {
+    if (!meta || !Array.isArray(meta.normalized_lines)) return '';
     return `<table class="code-box"><tbody>${meta.normalized_lines.map((line, index) => `<tr><td class="code-no">${String(index + 1).padStart(2, '0')}</td><td class="code-text">${esc(line) || '&nbsp;'}</td></tr>`).join('')}</tbody></table>`;
+  }
+
+  function blockHtml(block, prefix = '', paragraphClass = 'q-stem') {
+    if (!block) return '';
+    if (block.type === 'code') {
+      return codeTable(block.code || {normalized_lines: String(block.content || '').split('\n')});
+    }
+    if (block.type === 'preformatted') {
+      const role = esc(block.role || 'data');
+      return `<pre class="preformatted-block" data-role="${role}"><code>${esc(block.content || '') || ' '}</code></pre>`;
+    }
+    if (block.type === 'math') {
+      return `<div class="math-block">${texLite(stripMathFence(block.content || ''))}</div>`;
+    }
+    return `<p class="${paragraphClass}">${inline(prefix + (block.text ?? block.content ?? ''))}</p>`;
+  }
+
+  function renderBlocks(blocks = [], prefix = '', paragraphClass = 'q-stem') {
+    let html = '';
+    let firstBlock = true;
+    for (const block of blocks) {
+      // Keep the question number before the first visual block.  A fenced
+      // input/program block can legitimately precede prose; putting the
+      // prefix on the next paragraph makes the preview read as if the code
+      // belonged to the previous question.
+      if (firstBlock && prefix && block.type !== 'text') {
+        html += `<p class="${paragraphClass}">${inline(prefix)}</p>`;
+      }
+      const blockPrefix = firstBlock && block.type === 'text' ? prefix : '';
+      html += blockHtml(block, blockPrefix, paragraphClass);
+      firstBlock = false;
+    }
+    if (firstBlock && prefix) html += `<p class="${paragraphClass}">${inline(prefix)}</p>`;
+    return html;
   }
 
   function optsHtml(options, layout) {
@@ -219,35 +350,35 @@
     const preview = module.preview;
     if (!preview) return '<div class="empty-preview"><h2>这个模块暂时无法解析</h2><p>请根据上方错误提示修改右侧 Markdown。</p></div>';
     if (preview.type === 'choice') {
-      let html = '', first = true;
-      for (const block of preview.blocks) {
-        if (block.type === 'text') {
-          html += `<p class="q-stem">${first ? module.number + '. ' : ''}${inline(block.text)}</p>`;
-          first = false;
-        } else {
-          if (first) { html += `<p class="q-stem">${module.number}.</p>`; first = false; }
-          html += codeTable(block.code);
-        }
-      }
-      return html + optsHtml(preview.options, preview.layout);
+      return renderBlocks(preview.blocks, `${module.number}. `, 'q-stem') + optsHtml(preview.options, preview.layout);
     }
     if (preview.type === 'reading') {
       let html = `<div class="section-title">（${preview.section_index}）阅读下列程序，回答问题。</div>${codeTable(preview.code)}`;
-      if (preview.note) html += `<p class="note">${inline(preview.note)}</p>`;
+      html += preview.note_blocks?.length ? renderBlocks(preview.note_blocks, '', 'note') : (preview.note ? `<p class="note">${inline(preview.note)}</p>` : '');
       html += '<div class="type-title">·判断题：</div>';
       preview.judges.forEach((question, index) => {
         const label = preview.global_numbering ? (preview.judge_numbers?.[index] ?? index + 1) : `(${index + 1})`;
-        html += `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(question)}${preview.global_numbering && !/[（(]\s*[）)]\s*$/.test(question) ? '（ ）' : ''}</p>`;
+        const blocks = preview.judge_blocks?.[index];
+        if (blocks?.length) {
+          const suffix = preview.global_numbering && !/[（(]\s*[）)]\s*$/.test(question) ? '（ ）' : '';
+          const copy = blocks.map((item, itemIndex) => itemIndex === 0 && item.type === 'text' ? {...item, text: `${item.text || item.content}${suffix}`} : item);
+          html += renderBlocks(copy, `${label}${preview.global_numbering ? '.' : ''} `, 'subq');
+        } else {
+          html += `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(question)}${preview.global_numbering && !/[（(]\s*[）)]\s*$/.test(question) ? '（ ）' : ''}</p>`;
+        }
       });
       html += '<div class="type-title">·单选题：</div>';
       preview.choices.forEach((choice, index) => {
         const label = preview.global_numbering ? (preview.choice_numbers?.[index] ?? index + 1) : `(${preview.judges.length + index + 1})`;
-        html += `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(choice.text)}</p>${optsHtml(choice.options, choice.layout)}`;
+        html += choice.blocks?.length ? renderBlocks(choice.blocks, `${label}${preview.global_numbering ? '.' : ''} `, 'subq') : `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(choice.text)}</p>`;
+        html += optsHtml(choice.options, choice.layout);
       });
       return html;
     }
     let html = '';
-    if (preview.prose?.length) {
+    if (preview.prose_blocks?.length) {
+      html += renderBlocks(preview.prose_blocks, `（${preview.section_index}）`, 'q-stem');
+    } else if (preview.prose?.length) {
       html += `<p class="q-stem">（${preview.section_index}）${inline(preview.prose[0])}</p>`;
       preview.prose.slice(1).forEach(value => html += `<p class="note">${inline(value)}</p>`);
     } else {
@@ -256,7 +387,8 @@
     html += codeTable(preview.code);
     preview.groups.forEach((group, index) => {
       const label = preview.global_numbering ? (preview.group_numbers?.[index] ?? index + 1) : `(${index + 1})`;
-      html += `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(group.text)}</p>${optsHtml(group.options, group.layout)}`;
+      html += group.blocks?.length ? renderBlocks(group.blocks, `${label}${preview.global_numbering ? '.' : ''} `, 'subq') : `<p class="subq">${label}${preview.global_numbering ? '.' : ''} ${inline(group.text)}</p>`;
+      html += optsHtml(group.options, group.layout);
     });
     return html;
   }
@@ -267,12 +399,29 @@
     if (!module || !raw) return;
     els.previewTitle.textContent = kindName(module.kind, module.number);
     const code = module.code?.[0];
-    els.previewMeta.textContent = `${kindSub(module.kind)} · 公式 ${module.formula_count}${code ? ` · 代码 ${code.line_count} 行` : ''}`;
+    const coverage = state.analysis?.coverage;
+    const coverageText = coverage ? ` · 区块 ${coverage.rendered_blocks}/${coverage.source_blocks}` : '';
+    els.previewMeta.textContent = `${kindSub(module.kind)} · 公式 ${module.formula_count}${code ? ` · 代码 ${code.line_count} 行` : ''}${coverageText}`;
     els.moduleStatus.className = `status-pill ${module.status}`;
     els.moduleStatus.textContent = module.status === 'ok' ? '正常' : module.status === 'warning' ? '有提醒' : '解析错误';
-    const messages = [...module.errors.map(message => ({type: 'error', message})), ...module.warnings];
-    els.issues.hidden = !messages.length;
-    els.issues.innerHTML = messages.map(item => `<div class="issue ${item.type === 'formula' || item.type === 'code' ? 'warning' : item.type}">${item.type === 'error' ? '错误' : '提醒'}：${esc(item.message)}${item.sample ? ` · <code>${esc(item.sample)}</code>` : ''}</div>`).join('');
+    // Older V0.4 responses expose errors as strings, while the lossless
+    // schema may include structured diagnostics (including source lines).
+    // Normalize both shapes here so line-aware diagnostics remain visible.
+    const messages = [
+      ...(module.errors || []).map(item => typeof item === 'string' ? ({type: 'error', message: item}) : ({type: 'error', ...item})),
+      ...(module.warnings || []),
+      ...(module.diagnostics || [])
+    ];
+    const uniqueMessages = messages.filter((item, index, all) => {
+      const key = `${item.severity || item.type || 'warning'}|${item.code || ''}|${item.line || ''}|${item.message || ''}`;
+      return all.findIndex(candidate => `${candidate.severity || candidate.type || 'warning'}|${candidate.code || ''}|${candidate.line || ''}|${candidate.message || ''}` === key) === index;
+    });
+    els.issues.hidden = !uniqueMessages.length;
+    els.issues.innerHTML = uniqueMessages.map(item => {
+      const kind = item.type === 'error' ? 'error' : 'warning';
+      const line = item.line ? `（第 ${item.line} 行）` : '';
+      return `<div class="issue ${kind}">${item.type === 'error' ? '错误' : '提醒'}${line}：${esc(item.message)}${item.sample ? ` · <code>${esc(item.sample)}</code>` : ''}</div>`;
+    }).join('');
     els.preview.innerHTML = previewHtml(module);
     requestAnimationFrame(fitPreviewOptions);
     if (syncEditor) els.editor.value = raw.body.replace(/^\n+|\n+$/g, '');
@@ -294,6 +443,8 @@
     state.modules = source.modules;
     state.originals = new Map(source.modules.map(module => [module.number, module.body]));
     state.selected = source.modules[0]?.number ?? null;
+    state.analysis = null;
+    state.analysisPending = false;
     els.editor.disabled = true;
     els.summary.textContent = '正在解析……';
     try {
@@ -311,6 +462,8 @@
     const module = state.modules.find(item => item.number === state.selected);
     if (!module) return;
     module.body = `\n\n${els.editor.value.trimEnd()}\n\n`;
+    state.analysisPending = true;
+    setAuthenticated(state.authenticated);
     els.liveState.textContent = '正在重新渲染…';
     clearTimeout(state.timer);
     state.timer = setTimeout(async () => {

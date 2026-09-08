@@ -47,6 +47,7 @@
             <input id="fileInput" type="file" aria-label="打开 Markdown 文件" accept=".md,text/markdown,text/plain" hidden>
             <button id="openBtn" class="studio-btn primary" type="button" disabled>打开 MD</button>
             <button id="sampleBtn" class="studio-btn" type="button" disabled>加载示例</button>
+            <a class="studio-btn" href="/csp-paper-studio-template.md" download="csp-paper-studio-template.md">下载标准模板</a>
             <button id="downloadMdBtn" class="studio-btn" type="button" disabled>下载修改后 MD</button>
             <button id="exportBtn" class="studio-btn success" type="button" disabled>导出 Word</button>
         </div>
@@ -56,6 +57,11 @@
         <span>文件仅发送到当前 DataForge 服务器解析，不会转交第三方或持久保存。</span>
         <button id="studioLoginButton" type="button">登录后使用</button>
     </div>
+
+    <details class="studio-format-help">
+        <summary>格式说明</summary>
+        <span>旧版 V0.4 文档继续兼容；新文档可在顶部声明 <code>csp_format: 1</code>。程序用 <code>cpp</code> 围栏，输入/输出用 <code>text</code>、<code>plaintext</code>、<code>input</code>、<code>output</code>，公式用 <code>$...$</code> 或 <code>math</code> 围栏。区块中的空格和换行会保留。</span>
+    </details>
 
     <div class="studio-filebar">
         <div class="studio-filename" id="filename">尚未打开文件</div>
@@ -67,6 +73,7 @@
             <option value="local">题号：块内</option>
         </select>
     </div>
+    <div class="studio-diagnostics" id="studioDiagnostics" hidden aria-live="polite"></div>
 
     <section class="csp-workspace empty" id="workspace">
         <aside class="studio-sidebar">

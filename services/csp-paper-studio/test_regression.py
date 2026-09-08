@@ -25,6 +25,17 @@ TEMPLATE = ROOT / 'CSP_初赛模板.docx'
 
 
 class CoreCompatibilityTest(unittest.TestCase):
+    def test_running_application_contract_exposes_lossless_parser(self):
+        health = service_app.health()
+        self.assertEqual(2, health['schema_version'])
+        self.assertEqual('lossless-v1', health['parser'])
+        result = service_app.analyze_markdown(
+            '## 第 1 题\n题干\n```text\n1\n4\n```\n- A. a\n- B. b\n- C. c\n- D. d'
+        )
+        self.assertEqual(2, result['schema_version'])
+        self.assertEqual('preformatted', result['modules'][0]['preview']['blocks'][1]['type'])
+        self.assertEqual('1\n4', result['modules'][0]['preview']['blocks'][1]['content'])
+
     EXPECTED_HASHES = {
         'converter.py': '712301f1634af8985a49188550db8ee3bc86dbf19065cbffe302fa53f311ee73',
         'studio_core.py': '3c2b28a8539891581b555ab28f7a0f8fb2e1b37dac3fcb3aed47df7d9d5c9896',

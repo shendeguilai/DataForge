@@ -25,7 +25,7 @@ WORKDIR /app
 COPY requirements.lock.txt ./
 RUN python -m pip install --no-cache-dir --requirement requirements.lock.txt
 
-COPY --chown=csp-studio:csp-studio converter.py studio_core.py service_app.py CSP_初赛模板.docx ./
+COPY --chown=csp-studio:csp-studio converter.py studio_core.py document_model.py compatible_parser.py compatible_converter.py compatible_studio_core.py service_app.py CSP_初赛模板.docx ./
 COPY --chown=csp-studio:csp-studio samples ./samples
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

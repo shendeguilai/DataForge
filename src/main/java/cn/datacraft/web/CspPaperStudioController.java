@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Set;
 
 @RestController
@@ -39,7 +40,7 @@ public class CspPaperStudioController {
 
     @GetMapping("/samples/{name}")
     public ResponseEntity<JsonNode> sample(@PathVariable String name) {
-        String normalized = name.toLowerCase();
+        String normalized = name.toLowerCase(Locale.ROOT);
         if (!SAMPLE_NAMES.contains(normalized)) {
             throw new CspPaperStudioException(HttpStatus.NOT_FOUND, "示例不存在");
         }

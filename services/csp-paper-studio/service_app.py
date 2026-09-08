@@ -15,8 +15,9 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 import converter as converter_module
-from converter import ConvertError, convert
-from studio_core import analyze_markdown
+from converter import ConvertError
+from compatible_converter import convert_compatible
+from compatible_studio_core import analyze_markdown
 
 
 ROOT = Path(__file__).resolve().parent
@@ -88,7 +89,11 @@ async def request_metrics(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_error(_request: Request, exc: HTTPException):
-    return JSONResponse({'error': str(exc.detail)}, status_code=exc.status_code)
+    return JSONResponse(
+        {'error': str(exc.detail)},
+        status_code=exc.status_code,
+        headers={'Cache-Control': 'no-store'},
+    )
 
 
 @app.get('/health')
@@ -100,7 +105,8 @@ def health():
             {'status': 'DOWN', 'version': '0.4', 'error': missing},
             status_code=503,
         )
-    return {'status': 'UP', 'version': '0.4'}
+    return {'status': 'UP', 'version': '0.4', 'schema_version': 2,
+            'parser': 'lossless-v1'}
 
 
 @app.get('/api/sample/{name}')
@@ -158,17 +164,24 @@ async def analyze(request: Request):
 def build_word(markdown: str, filename: str, numbering: str):
     if not EXPORT_SLOTS.acquire(blocking=False):
         raise ExportBusy()
-    temp_dir = Path(tempfile.mkdtemp(prefix='csp_studio_'))
-    source = temp_dir / f'{filename}.md'
-    output = temp_dir / f'{filename}.docx'
+    temp_dir = None
     try:
+        temp_dir = Path(tempfile.mkdtemp(prefix='csp_studio_'))
+        # The user-facing name is only used for the response header.  Do not
+        # use it as an on-disk filename: 200 Chinese characters are valid
+        # under the API limit but exceed the byte limit of a Linux filename.
+        # Fixed short names also ensure that a sanitized name can never
+        # influence the temporary path or collide with a platform limit.
+        source = temp_dir / 'source.md'
+        output = temp_dir / 'result.docx'
         source.write_text(markdown, encoding='utf-8')
-        convert(source, output, TEMPLATE, numbering)
+        convert_compatible(source, output, TEMPLATE, numbering)
         if output.stat().st_size > MAX_WORD_BYTES:
             raise ConvertError('生成的 Word 文件超过 25 MiB')
         return temp_dir, output
     except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     finally:
         EXPORT_SLOTS.release()
@@ -190,10 +203,18 @@ async def export(request: Request):
     except ExportBusy:
         raise HTTPException(429, '当前 Word 导出任务较多，请稍后重试') from None
     except ConvertError as exc:
-        return JSONResponse({'error': str(exc)}, status_code=422)
+        return JSONResponse(
+            {'error': str(exc)},
+            status_code=422,
+            headers={'Cache-Control': 'no-store'},
+        )
     except Exception as exc:
         LOGGER.error('export failed error=%s', type(exc).__name__)
-        return JSONResponse({'error': 'Word 导出异常，请稍后重试'}, status_code=500)
+        return JSONResponse(
+            {'error': 'Word 导出异常，请稍后重试'},
+            status_code=500,
+            headers={'Cache-Control': 'no-store'},
+        )
 
     return FileResponse(
         output,

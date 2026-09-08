@@ -45,6 +45,9 @@ class CspPaperStudioControllerTest {
     void pageIsPublicButToolApisRequireLogin() throws Exception {
         mvc.perform(get("/csp-paper-studio.html").with(anonymous()))
                 .andExpect(status().isOk());
+        mvc.perform(get("/csp-paper-studio-template.md").with(anonymous()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("csp_format: 1")));
         mvc.perform(get("/api/tools/csp-paper-studio/samples/2022j").with(anonymous()))
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/tools/csp-paper-studio/analyze")
