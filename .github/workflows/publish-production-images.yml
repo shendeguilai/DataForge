@@ -89,3 +89,38 @@ jobs:
           docker pull --platform linux/amd64 "$source_image"
           docker tag "$source_image" "$target_image"
           docker push "$target_image"
+
+  mirror-acr:
+    # Keep GHCR as the primary source and copy the exact release to a domestic registry.
+    needs: [publish-app, publish-csp-studio, mirror-postgres]
+    if: ${{ vars.ACR_REGISTRY != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE || github.repository_owner }}
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ vars.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Copy production images to Aliyun ACR
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in "dataforge:$IMAGE_TAG" "dataforge-csp-studio:$IMAGE_TAG" "dataforge-postgres:17.10-bookworm"; do
+            source_image="$IMAGE_PREFIX/$image"
+            target_image="$ACR_REGISTRY/$ACR_NAMESPACE/$image"
+            docker pull --platform linux/amd64 "$source_image"
+            docker tag "$source_image" "$target_image"
+            docker push "$target_image"
+          done

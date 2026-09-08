@@ -70,3 +70,37 @@ docker compose --env-file /etc/dataforge/dataforge.env -f compose.prod.yml \
 - `no matching manifest for linux/amd64`：镜像架构错误，检查工作流是否使用 `platforms: linux/amd64`。
 - GHCR 拉取超时：重新验证 ECS 到 `ghcr.io:443` 的 DNS 和 TCP 连通性，并检查安全组与网络 ACL。
 
+## 6. 国内服务器使用阿里云 ACR 加速
+
+工作流支持在 GHCR 发布完成后，将同一版本的三个镜像复制到 ACR，避免国内服务器跨境下载。未配置 ACR 时，原来的 GHCR 发布不受影响。
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 中配置：
+
+| 类型 | 名称 | 内容 |
+| --- | --- | --- |
+| Variable | `ACR_REGISTRY` | ACR 实例公网域名，不含协议和路径 |
+| Variable | `ACR_USERNAME` | ACR 控制台显示的 Registry 登录名 |
+| Variable（可选） | `ACR_NAMESPACE` | 命名空间，默认使用 GitHub 仓库所有者名称 |
+| Secret | `ACR_PASSWORD` | Registry 登录密码，不是阿里云网页登录密码 |
+
+ACR 命名空间需预先创建，并开启自动创建私有仓库；也可以预先手动创建 `dataforge`、`dataforge-csp-studio`、`dataforge-postgres` 三个私有仓库。选择与服务器相同地域的实例。个人版的免费政策、配额和适用场景以阿里云当前控制台为准，不会通过此工作流自动购买或升级实例。
+
+等待工作流的 `mirror-acr` 成功后，在服务器上以部署用户交互式登录（密码不会进入命令历史）：
+
+```bash
+docker login <ACR实例域名> --username <ACR登录名>
+```
+
+Docker 可能将凭证以可还原编码保存在该用户的 Docker 配置文件中，并非加密保险箱。应限制配置文件权限，生产环境优先使用最小权限的专用账号或凭证助手，不要将其提交到 Git。
+
+备份 `/etc/dataforge/dataforge.env`，只修改以下三项，保留数据库、用户和业务配置：
+
+```text
+DATAFORGE_IMAGE_SOURCE=registry
+DATAFORGE_REGISTRY_PREFIX=<ACR实例域名>/<命名空间>/
+DATAFORGE_POSTGRES_IMAGE=<ACR实例域名>/<命名空间>/dataforge-postgres:17.10-bookworm
+```
+
+随后按第 3、4 节部署并验收。不要在 ACR 镜像复制完成前切换。切回 GHCR 时恢复原前缀和 PostgreSQL 镜像配置即可；回滚旧版本前还需确认对应旧镜像存在于选定仓库。
+
+此加速仅作用于生产 Docker 镜像下载，不改变 GitHub 代码拉取、Maven、pip 或系统软件源。
