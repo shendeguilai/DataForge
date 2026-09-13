@@ -401,6 +401,59 @@ int main() { return 0; }
         self.assertEqual(1, len([x for x in diagnostics if x.code == "UNKNOWN_FENCE"]))
         self.assertFalse(any(x.code == "UNCLOSED_FENCE" for x in diagnostics))
 
+    def test_inline_code_ending_in_option_like_text_is_not_split(self):
+        markdown = "\n".join([
+            "---", "csp_format: 1", "group: S", "---",
+            "## 第 1 题", "### 类型：单项选择题", "### 题干", "题干。",
+            "### 选项", "- A. `(a & MS) << B`", "- B. `a >> B`",
+            "- C. `a & (1 << B)`", "- D. `a & (MS << B)`",
+        ])
+        module = parse_document(markdown).modules[0]
+        self.assertFalse(module.errors)
+        self.assertEqual([
+            "A. `(a & MS) << B`", "B. `a >> B`",
+            "C. `a & (1 << B)`", "D. `a & (MS << B)`",
+        ], module.options)
+
+    def test_adjacent_inline_formulas_are_not_reported_as_unclosed(self):
+        markdown = "\n".join([
+            "---", "csp_format: 1", "group: S", "---",
+            "## 第 1 题", "### 类型：单项选择题", "### 题干",
+            "定义为 $F_1=1$，$F_n=F_{n-1}+F_{n-2}$$(n\\geq 3)$。",
+            "### 选项", "- A. 甲", "- B. 乙", "- C. 丙", "- D. 丁",
+        ])
+        module = parse_document(markdown).modules[0]
+        self.assertEqual(3, module.formula_count)
+        self.assertFalse(any(x.code == "MATH_PARSE_ERROR" for x in module.warnings))
+
+    def test_standard_fill_questions_follow_program_placeholder_count(self):
+        def fill_section(number, count):
+            marks = "①②③④⑤⑥"[:count]
+            code = "\n".join(f"int value_{mark} = {mark};" for mark in marks)
+            items = "\n\n".join(
+                f"{index}. {mark}处应填（ ）\n\n"
+                "   - A. `a`\n   - B. `b`\n   - C. `c`\n   - D. `d`"
+                for index, mark in enumerate(marks, 1)
+            )
+            return (
+                f"## 第 {number} 题\n\n### 类型：完善程序\n\n### 题干\n\n题干。\n\n"
+                f"### 程序\n\n```cpp\n{code}\n```\n\n### 小题\n\n{items}\n"
+            )
+
+        source = (ROOT.parent.parent / "src/main/resources/static/csp-paper-studio-template.md").read_text()
+        source = source[:source.index("\n## 第 19 题\n")] + "\n" + fill_section(19, 4) + "\n" + fill_section(20, 6)
+        model = parse_document(source)
+        self.assertFalse(model.errors)
+        self.assertEqual(4, len(next(x for x in model.modules if x.number == 19).groups))
+        self.assertEqual(6, len(next(x for x in model.modules if x.number == 20).groups))
+        with tempfile.TemporaryDirectory(prefix="csp_variable_fill_") as directory:
+            markdown = Path(directory) / "variable.md"
+            output = Path(directory) / "variable.docx"
+            markdown.write_text(source, encoding="utf-8")
+            convert_compatible(markdown, output, TEMPLATE, "auto")
+            document = Document(output)
+            self.assertTrue(any(paragraph.text.startswith("(6). ⑥处应填") for paragraph in document.paragraphs))
+
 
 if __name__ == "__main__":
     unittest.main()

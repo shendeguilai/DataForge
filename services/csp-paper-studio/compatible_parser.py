@@ -40,6 +40,13 @@ _OPTION_START_RE = re.compile(
     r"^(?P<prefix>[ \t]*(?:[-*+]\s*)?)(?P<letter>[A-D])(?:\.\s*|[．、)）]\s*)"
 )
 _OPTION_INLINE_RE = re.compile(r"(?<!\S)([B-D])(?:\.\s*|[．、)）]\s*)")
+_MATH_TOKEN_RE = re.compile(
+    r"(?s)(?<!\\)\$\$(.+?)(?<!\\)\$\$"
+    r"|(?<!\\)\\\[(.+?)(?<!\\)\\\]"
+    r"|(?<!\\)\$([^$\n]+?)(?<!\\)\$"
+    r"|(?<!\\)\\\(([^\n]+?)(?<!\\)\\\)"
+)
+_FILL_MARKS = "①②③④⑤⑥⑦⑧⑨⑩"
 
 
 def _mask_fenced_regions(text: str) -> str:
@@ -76,6 +83,18 @@ def _mask_fenced_regions(text: str) -> str:
                 if masked[position] not in "\r\n":
                     masked[position] = " "
     return "".join(masked)
+
+
+def _mask_inline_code_regions(text: str) -> str:
+    """Mask complete inline-code spans while retaining their offsets."""
+    return re.sub(
+        r"(?<!\\)(`+)([^\n]*?)(?<!\\)\1",
+        # Use a non-whitespace placeholder.  Spaces would be consumed by the
+        # option label's optional whitespace and move its content offset to
+        # the end of the line.
+        lambda match: "".join("\n" if char == "\n" else "x" for char in match.group(0)),
+        text,
+    )
 
 
 def _cut_duplicate_tail(text: str) -> str:
@@ -248,7 +267,9 @@ def _option_records(text: str):
         # as ``A. 1`` from becoming the stem's first option.
         masked_plain = masked_lines[line_no].rstrip("\r\n") if line_no < len(masked_lines) else ""
         plain = line.rstrip("\r\n")
-        match_plain = masked_plain
+        # Inline code can end in text such as ``B)``.  It is option content,
+        # not a second option label on the same Markdown line.
+        match_plain = _mask_inline_code_regions(masked_plain)
         first = _OPTION_START_RE.match(match_plain)
         if not first:
             offset += len(line)
@@ -610,17 +631,34 @@ def _parse_fill(number: int, body: str, body_start_line: int, standard: bool, di
     # Legacy exports use “- ①处应填” rather than numbered Markdown.  The
     # generic list splitter already retains those bullets; filter explanatory
     # lines only when they are not a fill marker.
-    items = [x for x in items if re.search(r"(?:处应填|填空|\b[①②③④⑤]\b)", x["raw"]) or standard]
+    items = [x for x in items if re.search(rf"(?:处应填|填空|[{_FILL_MARKS}])", x["raw"]) or standard]
     duplicates = _duplicate_groups(body)
     if not items and len(duplicates) >= 5:
         items = [{"raw": f"{mark} 处应填（ ）", "line": body_start_line, "offset": 0}
                  for mark in "①②③④⑤"]
-    module.groups = [_parse_item(x, body, body_start_line, diagnostics, strip_bullets=True) for x in items[:5]]
+    code_marks = []
+    for mark in re.findall(rf"[{_FILL_MARKS}]", code.content):
+        if mark not in code_marks:
+            code_marks.append(mark)
+    item_marks = []
+    for item in items:
+        match = re.search(rf"[{_FILL_MARKS}]", item["raw"])
+        item_marks.append(match.group(0) if match else "")
+    if standard and code_marks and item_marks != code_marks:
+        raise ConvertError(
+            f"第 {number} 题程序中的空缺为 {'、'.join(code_marks)}，"
+            f"小题标题为 {'、'.join(x or '未标号' for x in item_marks) or '无'}，两者不一致。"
+        )
+    module.groups = [_parse_item(x, body, body_start_line, diagnostics, strip_bullets=True) for x in items]
     for index, group in enumerate(module.groups):
         if not group.options and index < len(duplicates) and len(duplicates[index][1]) == 4:
             group.options = duplicates[index][1]
-    if len(module.groups) != 5:
-        raise ConvertError(f"第 {number} 题应有 5 个填空小题，实际解析到 {len(module.groups)} 个。")
+    expected_count = len(code_marks) if code_marks else len(module.groups)
+    if expected_count == 0 or len(module.groups) != expected_count:
+        raise ConvertError(
+            f"第 {number} 题程序中识别到 {expected_count} 个空缺，"
+            f"实际解析到 {len(module.groups)} 个填空小题。"
+        )
     if any(len(x.options) != 4 for x in module.groups):
         raise ConvertError(f"第 {number} 题有填空小题缺少完整的 A-D 选项。")
     module.blocks = [*module.prose_blocks, module.code]
@@ -643,14 +681,8 @@ def _formula_tokens(text: str):
     # accidentally discover a second, spurious inline formula inside
     # ``$$display $ math$$`` because the single-dollar pass starts halfway
     # through a display delimiter.
-    token_re = re.compile(
-        r"(?s)(?<!\\)\$\$(.+?)(?<!\\)\$\$"
-        r"|(?<!\\)\\\[(.+?)(?<!\\)\\\]"
-        r"|(?<!\\)\$([^$\n]+?)(?<!\\)\$"
-        r"|(?<!\\)\\\(([^\n]+?)(?<!\\)\\\)"
-    )
     tokens = []
-    for match in token_re.finditer(math_source):
+    for match in _MATH_TOKEN_RE.finditer(math_source):
         raw = next((group for group in match.groups() if group is not None), "")
         tokens.append(normalize_math_tex(raw))
     return [x for x in tokens if x]
@@ -707,6 +739,13 @@ def unclosed_math_diagnostics(blocks: Iterable[Block]):
         # Inline code is literal text, including any dollar signs it carries.
         value = re.sub(
             r"`[^`\n]*`",
+            lambda match: "".join("\n" if char == "\n" else " " for char in match.group(0)),
+            value,
+        )
+        # Mask complete expressions before looking for unmatched delimiters.
+        # Adjacent inline formulas contain ``$$`` at their boundary, but that
+        # pair is not a display-formula opener.
+        value = _MATH_TOKEN_RE.sub(
             lambda match: "".join("\n" if char == "\n" else " " for char in match.group(0)),
             value,
         )
