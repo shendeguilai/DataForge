@@ -47,7 +47,7 @@ class DockerSandbox:
                    "--pids-limit=64" if compile_mode else "--pids-limit=8", "--cpus=1",
                    "--memory=" + str(memory) + "m", "--memory-swap=" + str(memory) + "m",
                    "--user=10001:10001", "--log-driver=none", "--ulimit=nofile=64:64",
-                   "--tmpfs=/work:rw,nosuid,size=64m,mode=1777",
+                   "--tmpfs=/work:rw,exec,nosuid,size=64m,mode=1777",
                    "--tmpfs=/tmp:rw,noexec,nosuid,size=16m,mode=1777", self.image]
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         outputs = {"stdout": bytearray(), "stderr": bytearray()}
