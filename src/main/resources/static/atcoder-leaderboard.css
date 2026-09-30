@@ -337,3 +337,74 @@
 .leaderboard-summary span, .leaderboard-summary small,
 .board-title p, #pageSummary { font-size: 11px; }
 .leaderboard-summary > div > strong > small { font-size: 11px; }
+
+/* AtCoder leaderboard toolbar layout refinement */
+.leaderboard-heading {
+  align-items: flex-start;
+}
+
+.refresh-controls {
+  flex: 1;
+  justify-content: flex-end;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+}
+
+.contest-picker {
+  min-width: 360px;
+  flex: 1 1 380px;
+}
+
+.contest-picker select {
+  width: 100%;
+  min-width: 320px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.problem-button,
+.refresh-button {
+  height: 48px;
+  min-width: 120px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-radius: 12px;
+}
+
+.sync-state {
+  min-width: 250px;
+  min-height: 48px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+
+@media (max-width: 1250px) {
+  .leaderboard-heading {
+    flex-direction: column;
+  }
+
+  .refresh-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .refresh-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .contest-picker,
+  .contest-picker select,
+  .problem-button,
+  .sync-state,
+  .refresh-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
