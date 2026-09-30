@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN printf 'Package: *\nPin: version 9.3.0-10ubuntu2\nPin-Priority: 1001\n' > /etc/apt/preferences.d/noi-gcc \
+RUN printf 'Package: g++-9 gcc-9 gcc-9-base cpp-9 libgcc-9-dev libstdc++-9-dev libasan5 libubsan1 libtsan0 liblsan0 libquadmath0 libgomp1 libatomic1 libitm1\nPin: version 9.3.0-10ubuntu2\nPin-Priority: 1001\n' > /etc/apt/preferences.d/noi-gcc \
     && apt-get update && apt-get install -y --allow-downgrades --no-install-recommends g++-9=9.3.0-10ubuntu2 python3 \
     && ln -s /usr/bin/g++-9 /usr/local/bin/g++ \
     && test "$(g++ -dumpfullversion)" = "9.3.0" \

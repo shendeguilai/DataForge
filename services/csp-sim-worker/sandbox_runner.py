@@ -66,7 +66,8 @@ def execute(command, memory_mb, cpu_ms, wall_seconds, stdin_name, stdout_name, c
                 _, status, usage = os.wait4(child.pid, 0)
                 break
             time.sleep(0.005)
-        child.returncode = os.waitstatus_to_exitcode(status)
+        # Ubuntu 20.04 provides Python 3.8, before os.waitstatus_to_exitcode.
+        child.returncode = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -os.WTERMSIG(status)
     runtime_ms = round((usage.ru_utime + usage.ru_stime) * 1000)
     memory_bytes = usage.ru_maxrss * 1024
     message = read_file("stderr", OUTPUT_LIMIT)[:16000].decode("utf-8", "replace")
