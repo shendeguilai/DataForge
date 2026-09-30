@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CSP 复赛模拟 · 教师控制台</title>
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/csp-sim.css"><script src="/ui-core.js"></script>
+</head>
+<body data-csp-role="teacher">
+<header class="csp-topbar"><a class="csp-brand" href="/tools.html"><span class="brand-icon">C</span><span>DataForge <small>竞赛训练</small></span></a><span class="role-tag">教师控制台</span><nav class="module-nav" aria-label="站点模块"><a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a></nav><a href="/tools.html">返回工具箱 ↗</a></header>
+<div class="teacher-layout"><aside class="teacher-sidebar"><div class="sidebar-heading">CSP 复赛模拟</div><button class="nav-button active" data-action="roster">▦　学生名单</button><div class="sidebar-heading muted">我的考场</div><div id="examList"></div><button class="new-exam-button" data-action="create-exam">＋ 新建考场</button><div class="sidebar-note">先练规范，再练算法。<br>文件位置也是考试的一部分。</div></aside><main id="teacherMain" class="teacher-main"><h1>CSP 复赛模拟</h1><div class="loading">正在加载教师控制台…</div></main></div>
+<dialog id="cspDialog"></dialog><div id="cspToast" class="csp-toast" role="status"></div>
+<script src="/csp-sim.js"></script>
+</body></html>

@@ -20,6 +20,7 @@ x-app-environment: &app-environment
   AI_MODEL: ${AI_MODEL:-deepseek-v4-pro}
   ATCODER_COOKIE: ${ATCODER_COOKIE:-}
   CSP_STUDIO_BASE_URL: ${CSP_STUDIO_BASE_URL:-http://csp-studio:8765}
+  CSP_SIM_WORKER_SECRET: ${CSP_SIM_WORKER_SECRET:-}
   QUIZ_COUNTDOWN_SECONDS: ${QUIZ_COUNTDOWN_SECONDS:-3}
   QUIZ_BUZZ_SECONDS: ${QUIZ_BUZZ_SECONDS:-15}
   QUIZ_ROOM_EXPIRY_MINUTES: ${QUIZ_ROOM_EXPIRY_MINUTES:-30}
@@ -40,6 +41,40 @@ x-app-base: &app-base
     - no-new-privileges:true
 
 services:
+  csp-judge-worker:
+    profiles: ["csp-sim"]
+    image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-csp-worker:${DATAFORGE_IMAGE_TAG:-local}
+    build:
+      context: services/csp-sim-worker
+      dockerfile: Dockerfile
+    environment:
+      CSP_SIM_WORKER_SECRET: ${CSP_SIM_WORKER_SECRET:-}
+      CSP_SIM_API_URL: http://app:8080/api/tools/csp-sim
+      CSP_SIM_SANDBOX_IMAGE: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-csp-sandbox:${DATAFORGE_IMAGE_TAG:-local}
+      CSP_SIM_CONCURRENCY: ${CSP_SIM_CONCURRENCY:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    pids_limit: 128
+    mem_limit: 384m
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  csp-sandbox-image:
+    profiles: ["csp-sim-build"]
+    image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-csp-sandbox:${DATAFORGE_IMAGE_TAG:-local}
+    build:
+      context: services/csp-sim-worker
+      dockerfile: Dockerfile.sandbox
+    entrypoint: ["/bin/true"]
+    restart: "no"
+
   db:
     image: ${DATAFORGE_POSTGRES_IMAGE:-postgres:17.10-bookworm}
     environment:

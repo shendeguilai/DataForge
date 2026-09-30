@@ -28,6 +28,10 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> uploadTooLarge(Exception ex) {
         return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 25MB");
     }
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String,String>> conflictingRecord(Exception ex) {
+        return error(HttpStatus.CONFLICT,"数据与已有记录冲突，请刷新后重试");
+    }
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status)
                 .cacheControl(CacheControl.noStore())

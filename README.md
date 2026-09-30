@@ -19,6 +19,7 @@
 - 标准程序超时、退出码、输入大小检查
 - ZIP 中包含题面、标准程序、生成器、测试数据和 `manifest.json`
 - CSP Paper Studio V0.4：登录后可逐题检查 CSP 初赛 Markdown、实时编辑并导出 Word
+- CSP 复赛模拟：长期学生名单、Linux / Windows 文件桌面、规范检查、计时收卷、教师评测与成绩发布；支持测试点与子任务计分
 
 ## 启动
 
@@ -42,6 +43,8 @@ mvn spring-boot:run
 然后访问 <http://localhost:8080>。
 
 登录后从“实用工具”进入 CSP Paper Studio。浏览器选择的 Markdown 只发送到当前 DataForge 服务进行解析或导出，不会发送给第三方，也不会写入数据库或长期保存在服务器上。
+
+CSP 复赛模拟同样从“实用工具”进入。学生通过教师分享的考场链接或六位数字考场编号、姓名和学号使用，代码在本机编写后上传。真实判题需另外启用 Linux Docker Worker，详见 [使用与部署说明](docs/CSP_SIMULATOR.md)。
 
 首次启动会创建默认管理员：
 

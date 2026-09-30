@@ -1,0 +1,12 @@
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN printf 'Package: *\nPin: version 9.3.0-10ubuntu2\nPin-Priority: 1001\n' > /etc/apt/preferences.d/noi-gcc \
+    && apt-get update && apt-get install -y --allow-downgrades --no-install-recommends g++-9=9.3.0-10ubuntu2 python3 \
+    && ln -s /usr/bin/g++-9 /usr/local/bin/g++ \
+    && test "$(g++ -dumpfullversion)" = "9.3.0" \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --create-home sandbox && mkdir /work
+COPY sandbox_runner.py /opt/sandbox_runner.py
+USER 10001:10001
+WORKDIR /work
+ENTRYPOINT ["python3", "/opt/sandbox_runner.py"]

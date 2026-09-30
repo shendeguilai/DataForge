@@ -38,6 +38,11 @@ load_environment() {
   PUBLIC_PORT=${PUBLIC_PORT:-8080}
   DATAFORGE_IMAGE_TAG=${DATAFORGE_IMAGE_TAG:-local}
   DATAFORGE_IMAGE_SOURCE=${DATAFORGE_IMAGE_SOURCE:-build}
+  CSP_SIM_ENABLED=${CSP_SIM_ENABLED:-false}
+  CSP_SIM_WORKER_SECRET=${CSP_SIM_WORKER_SECRET:-}
+  if [[ "$CSP_SIM_ENABLED" == true ]]; then
+    [[ ${#CSP_SIM_WORKER_SECRET} -ge 24 ]] || die "CSP_SIM_WORKER_SECRET 至少需要24字符"
+  fi
   STATE_FILE=${DATAFORGE_STATE_FILE:-/srv/dataforge/deployed_commit}
   case "$DATAFORGE_IMAGE_SOURCE" in
     build) ;;
@@ -92,12 +97,16 @@ uses_registry_images() {
 
 prepare_release_images() {
   local tag=$1
+  local services=(app csp-studio)
+  if [[ "$CSP_SIM_ENABLED" == true ]]; then
+    services+=(csp-judge-worker csp-sandbox-image)
+  fi
   if uses_registry_images; then
     echo "从私有镜像仓库拉取提交：$tag"
-    compose_tagged "$tag" pull db app csp-studio
+    compose_tagged "$tag" pull db "${services[@]}"
   else
     echo "在服务器构建提交：$tag"
-    compose_tagged "$tag" build app csp-studio
+    compose_tagged "$tag" build "${services[@]}"
   fi
 }
 
@@ -131,6 +140,19 @@ start_tagged_service() {
   local tag=$1
   local service=$2
   compose_tagged "$tag" up -d --no-build --pull never "$service"
+}
+
+start_optional_judge() {
+  local tag=$1
+  if [[ "$CSP_SIM_ENABLED" == true ]] && compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+    compose_tagged "$tag" --profile csp-sim up -d --no-build --pull never --no-deps csp-judge-worker
+  fi
+}
+
+stop_optional_judge() {
+  if compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+    compose --profile csp-sim stop csp-judge-worker >/dev/null 2>&1 || true
+  fi
 }
 
 wait_for_database() {
@@ -219,6 +241,7 @@ backup_database() {
 }
 
 cleanup_old_backups() {
+  [[ ${DATAFORGE_KEEP_OLD_BACKUPS:-false} == true ]] && return 0
   local candidate
   while IFS= read -r -d '' candidate; do
     [[ "$candidate" == "$DATAFORGE_BACKUP_DIR/"* ]] || die "拒绝清理意外路径：$candidate"
@@ -239,6 +262,7 @@ deploy() {
   start_database
   wait_for_database
 
+  stop_optional_judge
   compose stop app csp-studio >/dev/null 2>&1 || true
   if database_has_schema; then
     backup_database "$(date -u +%Y%m%dT%H%M%SZ)-predeploy"
@@ -247,7 +271,8 @@ deploy() {
   if start_tagged_service "$next_commit" csp-studio \
       && wait_for_csp_studio \
       && start_tagged_service "$next_commit" app \
-      && wait_for_application; then
+      && wait_for_application \
+      && start_optional_judge "$next_commit"; then
     printf '%s\n' "$next_commit" > "$STATE_FILE"
     cleanup_old_backups
     echo "部署成功：$next_commit"
@@ -255,6 +280,7 @@ deploy() {
   fi
 
   echo "新版本启动失败，尝试恢复旧镜像：$previous_commit" >&2
+  stop_optional_judge
   if uses_registry_images; then
     compose_tagged "$previous_commit" pull app || true
   fi
@@ -287,6 +313,7 @@ restore_backup() {
 
   start_database
   wait_for_database
+  stop_optional_judge
   compose stop app csp-studio >/dev/null 2>&1 || true
   compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
     pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges \
@@ -311,8 +338,16 @@ restore_backup() {
     start_tagged_service "$git_commit" csp-studio
     wait_for_csp_studio || die "数据已恢复，但对应 CSP Paper Studio 服务未通过健康检查"
   fi
+  if [[ "$CSP_SIM_ENABLED" == true ]] && compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+    if uses_registry_images; then
+      compose_tagged "$git_commit" pull csp-judge-worker csp-sandbox-image
+    else
+      compose_tagged "$git_commit" build csp-judge-worker csp-sandbox-image
+    fi
+  fi
   start_tagged_service "$git_commit" app
   wait_for_application || die "数据已恢复，但对应应用版本未通过健康检查"
+  start_optional_judge "$git_commit"
   printf '%s\n' "$git_commit" > "$STATE_FILE"
   echo "恢复完成：$backup_id；恢复前 runtime 保留在 $safety_path"
 }
@@ -327,12 +362,14 @@ import_h2() {
   prepare_release_images "$tag"
   start_database
   wait_for_database
+  stop_optional_judge
   compose stop app csp-studio >/dev/null 2>&1 || true
   DATAFORGE_IMAGE_TAG="$tag" compose --profile tools run --rm importer
   start_tagged_service "$tag" csp-studio
   wait_for_csp_studio || die "迁移完成，但 CSP Paper Studio 服务未通过健康检查"
   start_tagged_service "$tag" app
   wait_for_application || die "迁移完成，但应用未通过健康检查"
+  start_optional_judge "$tag"
   printf '%s\n' "$tag" > "$STATE_FILE"
   echo "H2 数据迁移及应用启动完成"
 }

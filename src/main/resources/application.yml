@@ -24,6 +24,8 @@ spring:
 
 dataforge:
   runtime-dir: ${DATAFORGE_RUNTIME_DIR:./runtime}
+  csp-sim:
+    worker-secret: ${CSP_SIM_WORKER_SECRET:}
   process-stack-mb: ${DATAFORGE_PROCESS_STACK_MB:256}
   daily-generation-limit: ${DAILY_GENERATION_LIMIT:30}
   invite-code: ${INVITE_CODE:443322}

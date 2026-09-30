@@ -36,6 +36,8 @@ public class SecurityConfig {
                         "/quiz-cards/**", "/webjars/**", "/error", "/api/tools/atcoder/**", "/ws/tools/typing", "/ws/tools/quiz",
                         "/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                .requestMatchers("/csp-sim-student.html", "/csp-sim.css", "/csp-sim.js",
+                        "/api/tools/csp-sim/join/**", "/api/tools/csp-sim/student/**", "/api/tools/csp-sim/worker/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/tools/atcoder-leaderboard").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/tools/atcoder-problems", "/api/tools/atcoder-problems/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/tools/atcoder-leaderboard/refresh").hasRole("ADMIN")

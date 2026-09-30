@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CSP 复赛模拟 · 学生桌面</title>
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/csp-sim.css"><script src="/ui-core.js"></script>
+</head>
+<body data-csp-role="student">
+<header class="csp-topbar"><a class="csp-brand" href="/tools.html"><span class="brand-icon">C</span><span>DataForge <small>竞赛训练</small></span></a><span class="role-tag">学生桌面</span><nav class="module-nav" aria-label="站点模块"><a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a></nav><button class="header-button" data-action="logout-student" id="studentLogout" hidden>切换学生</button></header>
+<main id="studentMain"><section class="join-card"><span class="eyebrow">CSP SECOND ROUND</span><h1>准备好你的<br><span>答案文件夹。</span></h1><p>进入老师的考场，练习目录管理与规范交卷。</p><form id="joinForm"><label>考场编号<input name="examId" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" placeholder="老师提供的六位数字"></label><label>姓名<input name="name" required maxlength="50" autocomplete="name" placeholder="与老师名单中的姓名一致"></label><label>学号<input name="code" required maxlength="50" autocomplete="off" placeholder="学生名单中的学号，保留前面的 0"></label><button class="button primary" type="submit">进入我的桌面 →</button><p class="form-error" id="joinError" role="alert"></p></form><small>换电脑后，使用相同的姓名和学号即可恢复文件。</small></section></main>
+<dialog id="cspDialog"></dialog><div id="cspToast" class="csp-toast" role="status"></div>
+<script src="/csp-sim.js"></script>
+</body></html>
