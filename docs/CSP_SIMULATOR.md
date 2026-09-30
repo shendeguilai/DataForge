@@ -91,4 +91,6 @@ CSP_SIM_DOCKER_TESTS=1 python3 -m unittest discover -s services/csp-sim-worker -
 
 此规格先将 `CSP_SIM_CONCURRENCY=1`，让整班交卷进入队列串行评测。60 人同时进入、上传文件与 60 个程序同时编译是不同负载；排队不会减少题目分数。单个编译容器的内存上限为 768MB，运行容器上限为题目内存加 64MB；网站、数据库、宝塔和其他服务也需内存，因此此设置不保证 2GB 主机一定足够。
 
+可同时在生产配置中设置 `DATAFORGE_APP_MEMORY_LIMIT=768m` 和 `DATAFORGE_JAVA_OPTIONS='-Xms128m -Xmx384m'`，给评测保留内存余量。默认不改变已有网站的内存限制；小内存配置仍应结合实际课堂负载验证。
+
 上线前核对空闲内存、Docker 状态和 CPU 架构，运行真实编译与资源限制测试，再用整班提交量验收。出现基础设施故障时任务应保留并重试，不能计入学生零分。镜像使用现有 GitHub Actions / ACR 成品发布流程，避免在小内存生产机上编译整套应用。

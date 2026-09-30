@@ -4,6 +4,7 @@ x-app-environment: &app-environment
   SPRING_PROFILES_ACTIVE: prod
   TZ: UTC
   PORT: "8080"
+  JAVA_TOOL_OPTIONS: ${DATAFORGE_JAVA_OPTIONS:-}
   DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB is required}
   DATABASE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER is required}
   DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -28,6 +29,7 @@ x-app-environment: &app-environment
 
 x-app-base: &app-base
   image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge:${DATAFORGE_IMAGE_TAG:-local}
+  mem_limit: ${DATAFORGE_APP_MEMORY_LIMIT:-0}
   environment: *app-environment
   volumes:
     - ${DATAFORGE_RUNTIME_DIR_HOST:?DATAFORGE_RUNTIME_DIR_HOST is required}:/var/lib/dataforge/runtime
