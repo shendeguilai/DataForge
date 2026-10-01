@@ -18,6 +18,7 @@ public final class CspTypes {
         public String regionCode = "GD";
         public String rootPath, folderPattern = "{examNumber}";
         public int durationMinutes = 210;
+        public int round = 1;
         public Instant startedAt, deadline;
         public String publishedBatch;
         public List<Problem> problems = new ArrayList<>();
@@ -46,6 +47,7 @@ public final class CspTypes {
     }
     public static class Participation {
         public String studentId, examNumber, folderName, tokenHash, latestSubmission;
+        public boolean active = true;
         public Instant lastSeen;
         public Map<String, Entry> entries = new LinkedHashMap<>();
     }
@@ -53,10 +55,12 @@ public final class CspTypes {
         public String participationId, studentId;
         public Instant submittedAt = Instant.now();
         public boolean automatic;
+        public int round = 1;
         public Map<String, Entry> entries = new LinkedHashMap<>();
     }
     public static class Batch {
-        public boolean review;
+        public boolean review, published;
+        public int round = 1;
         public Instant createdAt = Instant.now();
         public List<String> taskIds = new ArrayList<>();
     }
@@ -76,7 +80,8 @@ public final class CspTypes {
         public List<CaseResult> cases = new ArrayList<>();
     }
     public static class CaseResult {
-        public String id, verdict;
+        public String id, verdict, message = "", expected = "", actual = "";
+        public int differenceLine, differenceColumn;
         public long runtimeMs, memoryBytes;
     }
     public record StudentInput(String name, String className, String studentNumber) {}

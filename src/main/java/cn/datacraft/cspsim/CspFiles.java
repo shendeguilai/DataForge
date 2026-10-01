@@ -28,6 +28,11 @@ public class CspFiles {
         try { return Files.readAllBytes(root.resolve(id)); }
         catch (IOException e) { throw new IllegalStateException("保存的文件无法读取，请联系老师", e); }
     }
+    public long size(String id) {
+        if (id == null || !id.matches("[a-f0-9-]{36}")) throw new IllegalArgumentException("文件标识无效");
+        try { return Files.size(root.resolve(id)); }
+        catch (IOException e) { throw new IllegalStateException("保存的文件无法读取，请联系老师", e); }
+    }
     public static String path(String raw, boolean windows) {
         if (raw == null || raw.length() > 500 || raw.indexOf('\0') >= 0 || raw.chars().anyMatch(c -> c < 32))
             throw new IllegalArgumentException("路径无效");

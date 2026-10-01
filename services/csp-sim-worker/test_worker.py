@@ -1,7 +1,7 @@
 import base64
 import unittest
 from unittest.mock import Mock
-from worker import grade_task, normalize_output, run_claim
+from worker import grade_task, normalize_output, run_claim, explain_difference
 
 
 class WorkerTests(unittest.TestCase):
@@ -28,6 +28,28 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(payload["ioMode"], io)
             self.assertNotIn("answer", payload)
             self.assertNotIn("answerBlob", payload)
+
+    def test_wrong_answers_show_first_difference_and_bounded_context(self):
+        d=explain_difference(b"ok\n1 4\n",b"ok\n1 3\n")
+        self.assertEqual((d["differenceLine"],d["differenceColumn"]),(2,3))
+        self.assertEqual(d["expected"],"1 3")
+        self.assertEqual(d["actual"],"1 4")
+        self.assertEqual(explain_difference(b"",b"3\n")["actual"],"〈输出结束〉")
+        self.assertEqual(explain_difference(b"3 4",b"3")["expected"],"〈输出结束〉")
+        long=explain_difference(b"a"*10000+b"x",b"a"*10000+b"y")
+        self.assertLessEqual(len(long["actual"]),162)
+        task,blobs=self.fixture();sandbox=Mock()
+        sandbox.run.side_effect=[{"verdict":"AC","program":"binary"},{"verdict":"AC","output":base64.b64encode(b"4\n").decode()}]
+        case=grade_task(task,blobs.__getitem__,sandbox)["cases"][0]
+        self.assertEqual(case["expected"],"3")
+        self.assertEqual(case["actual"],"4")
+
+    def test_missing_output_file_message_is_kept_per_case(self):
+        task,blobs=self.fixture("FILE");sandbox=Mock()
+        sandbox.run.side_effect=[{"verdict":"AC","program":"binary"},{"verdict":"WA","message":"未生成规定的输出文件：sum.out"}]
+        case=grade_task(task,blobs.__getitem__,sandbox)["cases"][0]
+        self.assertEqual(case["verdict"],"WA")
+        self.assertIn("sum.out",case["message"])
 
     def test_compile_error_has_no_test_cases(self):
         task, blobs = self.fixture()

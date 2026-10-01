@@ -201,13 +201,75 @@ public class CspSimService {
         }
         return teacherExam(owner, examRecord.id);
     }
+    private List<CspRecord> participants(String examId) {
+        return records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", examId).stream()
+                .filter(r -> decode(r, Participation.class).active).toList();
+    }
+    public Map<String,Object> editExam(String owner, String id, CreateExam input) {
+        CspRecord r = owned(id, "EXAM", owner); finishIfExpired(r);
+        if (r.state.equals("OPEN")) throw new IllegalStateException("请先结束收卷，再编辑考场");
+        if (input == null || input.exam == null) throw new IllegalArgumentException("请填写考场配置");
+        Exam previous = ensureJoinCode(r), next = input.exam;
+        validateExam(next);
+        if (r.state.equals("CLOSED") && (!previous.environment.equals(next.environment) || !previous.rootPath.equals(next.rootPath)
+                || !previous.folderPattern.equals(next.folderPattern) || !previous.regionCode.equals(next.regionCode) || !previous.group.equals(next.group)))
+            throw new IllegalStateException("请先准备新一轮，再修改文件环境或考生目录规则");
+        for (Problem p : next.problems) previous.problems.stream().filter(old -> old.id.equals(p.id)).findFirst().ifPresent(old -> {
+            p.cases = old.cases; p.samples = old.samples; p.dataVersion = old.dataVersion; p.scoring = old.scoring;
+            p.dataConfirmed = old.dataConfirmed && old.maxScore.compareTo(p.maxScore) == 0;
+            if (old.maxScore.compareTo(p.maxScore) != 0 && !p.cases.isEmpty()) allocateScores(p);
+        });
+        if (r.state.equals("CLOSED") && !previous.problems.stream().map(p->p.id).collect(java.util.stream.Collectors.toSet()).equals(next.problems.stream().map(p->p.id).collect(java.util.stream.Collectors.toSet())))
+            throw new IllegalStateException("请先准备新一轮，再增删题目");
+        next.joinCode = previous.joinCode; next.round = previous.round; next.startedAt = previous.startedAt; next.deadline = previous.deadline;
+        next.publishedBatch = previous.publishedBatch;
+        if (r.state.equals("DRAFT")) {
+            if (input.students == null || input.students.isEmpty() || input.students.size() > 60) throw new IllegalArgumentException("请选择1至60名学生");
+            Set<String> ids = new HashSet<>(), folders = new HashSet<>();
+            List<CspRecord> existing = records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", id);
+            for (Assignment a : input.students) {
+                if (a == null || !ids.add(a.studentId())) throw new IllegalArgumentException("学生重复或无效");
+                Student student = decode(owned(a.studentId(), "STUDENT", owner), Student.class);
+                CspRecord pr = existing.stream().filter(member -> decode(member, Participation.class).studentId.equals(a.studentId())).findFirst().orElse(null);
+                Participation member = pr == null ? new Participation() : decode(get(pr.id,"PARTICIPATION",true), Participation.class);
+                member.studentId = a.studentId(); member.active = true;
+                member.examNumber = a.examNumber() == null || a.examNumber().isBlank() ? next.regionCode + "-" + next.group + student.studentNumber : text(a.examNumber(),100,"准考证号");
+                member.folderName = a.folderName() == null || a.folderName().isBlank() ? next.folderPattern.replace("{examNumber}",member.examNumber).replace("{region}",next.regionCode).replace("{name}",student.name).replace("{studentNumber}",student.studentNumber) : a.folderName();
+                CspFiles.name(member.folderName,windows(next));
+                if (!folders.add(windows(next) ? member.folderName.toLowerCase(Locale.ROOT) : member.folderName)) throw new IllegalArgumentException("考生文件夹名称重复");
+                member.entries = new LinkedHashMap<>(); seedWorkspace(member,next);
+                if (pr == null) create("PARTICIPATION",owner,id,member); else save(pr,member);
+            }
+            for (CspRecord pr : existing) if (!ids.contains(decode(pr,Participation.class).studentId)) {
+                Participation member = decode(get(pr.id,"PARTICIPATION",true),Participation.class); member.active=false; member.tokenHash=null; save(pr,member);
+            }
+        }
+        save(r,next); return teacherExam(owner,id);
+    }
+    private void seedWorkspace(Participation p, Exam e) {
+        CspFiles.seed(p.entries,e.rootPath);
+        CspFiles.seed(p.entries,windows(e) ? "/C/Users/noi/Desktop" : "/home/noi/Desktop");
+    }
+    /** Preserve submissions/tasks; only the new round's workspace is reset. */
+    public Map<String,Object> restart(String owner, String id) {
+        CspRecord r = owned(id,"EXAM",owner);
+        if (!r.state.equals("CLOSED")) throw new IllegalStateException("请先结束本轮收卷，再准备新一轮");
+        Exam e = ensureJoinCode(r);
+        if (e.publishedBatch != null) {CspRecord br=get(e.publishedBatch,"BATCH",true);Batch b=decode(br,Batch.class);b.published=true;save(br,b);}
+        e.round++; e.startedAt=null; e.deadline=null; e.publishedBatch=null;
+        for (CspRecord pr : participants(id)) {
+            Participation p = decode(get(pr.id,"PARTICIPATION",true),Participation.class);
+            p.entries = new LinkedHashMap<>(); seedWorkspace(p,e); p.latestSubmission=null; p.lastSeen=null; save(pr,p);
+        }
+        r.state="DRAFT"; save(r,e); return teacherExam(owner,id);
+    }
     public List<Map<String, Object>> exams(String owner) {
         return records.findByKindAndOwnerOrderByUpdatedAtDesc("EXAM", owner).stream().map(r -> { Exam e = ensureJoinCode(get(r.id,"EXAM",true)); return Map.<String,Object>of("id", r.id, "joinCode", e.joinCode, "name", e.name, "state", r.state, "mode", e.mode, "environment", e.environment); }).toList();
     }
     public Map<String, Object> teacherExam(String owner, String id) {
         CspRecord r = owned(id, "EXAM", owner); finishIfExpired(r); Exam exam = ensureJoinCode(r);
         List<Map<String, Object>> participants = new ArrayList<>();
-        for (CspRecord pr : records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", id)) {
+        for (CspRecord pr : participants(id)) {
             Participation p = decode(pr, Participation.class); Map<String,Object> v = new LinkedHashMap<>(studentView(get(p.studentId, "STUDENT", false), false));
             v.put("participationId", pr.id); v.put("examNumber", p.examNumber); v.put("folderName", p.folderName); v.put("joined", p.lastSeen != null);
             v.put("lastSeen", p.lastSeen == null ? "" : p.lastSeen); v.put("latestSubmission", p.latestSubmission == null ? "" : p.latestSubmission);
@@ -225,7 +287,7 @@ public class CspSimService {
         CspRecord examRecord=owned(id,"EXAM",owner);
         if (!examRecord.state.equals("DRAFT")) throw new IllegalStateException("只能在开考前更新考号和目录");
         Exam exam=decode(examRecord,Exam.class);Set<String> folders=new HashSet<>();
-        for (CspRecord member : records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION",id)) {
+        for (CspRecord member : participants(id)) {
             CspRecord locked=get(member.id,"PARTICIPATION",true);Participation p=decode(locked,Participation.class);
             Student student=decode(get(p.studentId,"STUDENT",false),Student.class);
             p.examNumber=exam.regionCode+"-"+exam.group+student.studentNumber;
@@ -258,7 +320,7 @@ public class CspSimService {
         if (request == null) throw new IllegalArgumentException("请填写姓名和学号");
         CspRecord r = resolveExam(examId); finishIfExpired(r); Exam exam = ensureJoinCode(r);
         String name = text(request.name(), 50, "姓名"), code = text(request.code(), 50, "学号");
-        for (CspRecord pr : records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", r.id)) {
+        for (CspRecord pr : participants(r.id)) {
             Participation p = decode(pr, Participation.class); Student s = decode(get(p.studentId, "STUDENT", false), Student.class);
             if (s.enabled && s.name.equals(name) && equal(s.studentNumber, code)) {
                 CspRecord locked = get(pr.id, "PARTICIPATION", true); p = decode(locked, Participation.class);
@@ -271,7 +333,7 @@ public class CspSimService {
     private CspRecord studentAccess(String id, String token) {
         CspRecord untrusted = get(id, "PARTICIPATION", false); CspRecord exam = get(untrusted.parentId, "EXAM", true);
         finishIfExpired(exam); CspRecord record = get(id, "PARTICIPATION", true); Participation p = decode(record, Participation.class);
-        if (token == null || token.length() > 100 || !equal(p.tokenHash, hash(token))) throw new AccessDeniedException("请重新输入姓名和学号");
+        if (!p.active || token == null || token.length() > 100 || !equal(p.tokenHash, hash(token))) throw new AccessDeniedException("请重新输入姓名和学号");
         if (!decode(get(p.studentId,"STUDENT",false),Student.class).enabled) throw new AccessDeniedException("学生档案已停用，请联系老师");
         return record;
     }
@@ -281,8 +343,9 @@ public class CspSimService {
     }
     public Map<String,Object> workspace(String id, String token) {
         CspRecord r = studentAccess(id, token); Participation p = decode(r, Participation.class); CspRecord er = get(r.parentId, "EXAM", false); Exam e = decode(er, Exam.class);
+        if (p.lastSeen == null && er.state.equals("OPEN")) {p.lastSeen=now();save(r,p);}
         Map<String,Object> view = new LinkedHashMap<>(); view.put("id", id); view.put("examId", er.id); view.put("state", er.state); view.put("revision", r.version);
-        view.put("examCode", e.joinCode);
+        view.put("examCode", e.joinCode); view.put("round",e.round);
         view.put("student", studentView(get(p.studentId, "STUDENT", false), false)); view.put("examNumber", p.examNumber); view.put("folderName", p.folderName);
         view.put("name", e.name); view.put("environment", e.environment); view.put("mode", e.mode); view.put("rootPath", e.rootPath); view.put("deadline", e.deadline == null ? "" : e.deadline);
         view.put("serverTime", now()); view.put("entries", p.entries); view.put("latestSubmission", p.latestSubmission == null ? "" : p.latestSubmission);
@@ -333,7 +396,7 @@ public class CspSimService {
         if (key == null || p.entries.get(key).directory) throw new NoSuchElementException("文件不存在"); return files.get(p.entries.get(key).blob);
     }
     private CspRecord snapshot(CspRecord r, Participation p, boolean automatic) {
-        Submission s = new Submission(); s.participationId = r.id; s.studentId = p.studentId; s.submittedAt = now(); s.automatic = automatic; s.entries = new LinkedHashMap<>(p.entries);
+        Submission s = new Submission(); s.round=decode(get(r.parentId,"EXAM",false),Exam.class).round; s.participationId = r.id; s.studentId = p.studentId; s.submittedAt = now(); s.automatic = automatic; s.entries = new LinkedHashMap<>(p.entries);
         CspRecord submission = create("SUBMISSION", r.owner, r.id, s); p.latestSubmission = submission.id; save(r, p); return submission;
     }
     public Map<String,Object> submit(String id, String token) {
@@ -372,15 +435,36 @@ public class CspSimService {
             if (!decode(r,Participation.class).studentId.equals(studentId)) continue;
             CspRecord er = get(r.parentId,"EXAM",false); Exam e = decode(er,Exam.class);
             Map<String,Object> item = new LinkedHashMap<>(); item.put("examId",er.id); item.put("name",e.name); item.put("state",er.state); item.put("startedAt",e.startedAt == null ? "" : e.startedAt);
+            item.put("round",e.round);
             if (e.publishedBatch != null) item.put("results",batchView(e.publishedBatch,studentId)); result.add(item);
+            Map<Integer,CspRecord> past=new TreeMap<>(Comparator.reverseOrder());
+            for(CspRecord br:records.findByKindAndParentIdOrderByUpdatedAtAsc("BATCH",er.id)) {
+                Batch b=decode(br,Batch.class);if(b.published && !b.review && b.round<e.round) past.put(b.round,br);
+            }
+            for(var prior:past.entrySet()) {Map<String,Object> archived=new LinkedHashMap<>(); archived.put("examId",er.id);archived.put("name",e.name);archived.put("round",prior.getKey());archived.put("state","CLOSED");archived.put("results",batchView(prior.getValue().id,studentId));result.add(archived);}
         }
         return result;
     }
 
     private Problem problem(Exam e, String id) { return e.problems.stream().filter(p -> p.id.equals(id)).findFirst().orElseThrow(() -> new NoSuchElementException("题目不存在")); }
     public Map<String,Object> uploadData(String owner, String examId, String problemId, byte[] zip, boolean samples) {
+        return importData(owner,examId,problemId,CspFiles.unzip(zip),samples);
+    }
+    public Map<String,Object> uploadDataFiles(String owner, String examId, String problemId, List<String> names, List<byte[]> contents, boolean samples) {
+        if (names == null || names.isEmpty() || names.size() != contents.size() || names.size() > 2000) throw new IllegalArgumentException("请选择配对的.in与.out/.ans文件，最多2000个文件");
+        Map<String,byte[]> unpacked = new LinkedHashMap<>(); long total=0;
+        for (int i=0;i<names.size();i++) {
+            String name=names.get(i); CspFiles.name(name,false);
+            if (!name.endsWith(".in") && !name.endsWith(".out") && !name.endsWith(".ans")) throw new IllegalArgumentException("仅支持.in、.out和.ans数据文件");
+            byte[] content=contents.get(i); total+=content.length;
+            if (content.length>25*1024*1024 || total>25L*1024*1024) throw new IllegalArgumentException("每个数据文件最多25MB，合计最多25MB");
+            if (unpacked.putIfAbsent(name,content)!=null) throw new IllegalArgumentException("数据包含重名文件："+name);
+        }
+        return importData(owner,examId,problemId,unpacked,samples);
+    }
+    private Map<String,Object> importData(String owner,String examId,String problemId,Map<String,byte[]> unpacked,boolean samples) {
         CspRecord r = owned(examId, "EXAM", owner); Exam e = decode(r, Exam.class); Problem problem = problem(e, problemId);
-        Map<String,byte[]> unpacked = CspFiles.unzip(zip); List<TestCase> cases = new ArrayList<>();
+        List<TestCase> cases = new ArrayList<>();
         List<String> inputs = unpacked.keySet().stream().filter(n -> n.endsWith(".in")).sorted().toList();
         if (inputs.isEmpty() || inputs.size() > 1000 || samples && inputs.size() > 10) throw new IllegalArgumentException("数据包应包含1至1000组数据，样例最多10组");
         for (String input : inputs) {
@@ -392,11 +476,26 @@ public class CspSimService {
         for (String name : unpacked.keySet()) if ((name.endsWith(".out") || name.endsWith(".ans")) && !unpacked.containsKey(name.substring(0, name.lastIndexOf('.')) + ".in")) throw new IllegalArgumentException("答案没有配对输入：" + name);
         if (samples) problem.samples = cases;
         else {
-            BigDecimal each = problem.maxScore.divide(BigDecimal.valueOf(cases.size()), 4, RoundingMode.DOWN), used = BigDecimal.ZERO;
-            for (int i = 0; i < cases.size(); i++) { cases.get(i).score = i == cases.size() - 1 ? problem.maxScore.subtract(used) : each; used = used.add(cases.get(i).score); }
-            problem.cases = cases; problem.scoring = "POINTS"; problem.dataVersion = UUID.randomUUID().toString(); problem.dataConfirmed = false;
+            problem.cases = cases; allocateScores(problem); problem.dataVersion = UUID.randomUUID().toString(); problem.dataConfirmed = false;
         }
         save(r, e); return teacherExam(owner, examId);
+    }
+    private void allocateScores(Problem p) {
+        BigDecimal each=p.maxScore.divide(BigDecimal.valueOf(p.cases.size()),4,RoundingMode.DOWN),used=BigDecimal.ZERO;
+        for(int i=0;i<p.cases.size();i++){p.cases.get(i).score=i==p.cases.size()-1?p.maxScore.subtract(used):each;used=used.add(p.cases.get(i).score);}
+        p.scoring="POINTS";
+    }
+    public List<Map<String,Object>> dataFiles(String owner,String examId,String problemId,boolean samples) {
+        Exam e=decode(owned(examId,"EXAM",owner),Exam.class); Problem p=problem(e,problemId);
+        return (samples?p.samples:p.cases).stream().map(c -> Map.<String,Object>of("id",c.id,"inputBytes",files.size(c.inputBlob),"answerBytes",files.size(c.answerBlob),"previewLimit",128*1024)).toList();
+    }
+    public byte[] readData(String owner,String examId,String problemId,String caseId,String kind,boolean samples,boolean download) {
+        Exam e=decode(owned(examId,"EXAM",owner),Exam.class);Problem p=problem(e,problemId);
+        TestCase c=(samples?p.samples:p.cases).stream().filter(tc->tc.id.equals(caseId)).findFirst().orElseThrow(()->new NoSuchElementException("测试点不存在"));
+        if (!Set.of("input","answer").contains(kind)) throw new IllegalArgumentException("请选择输入或答案");
+        String blob=kind.equals("input")?c.inputBlob:c.answerBlob;
+        if (!download && files.size(blob)>128*1024) throw new IllegalArgumentException("数据较大，请下载查看");
+        return files.get(blob);
     }
     public Map<String,Object> configureData(String owner, String examId, String problemId, DataConfig config) {
         if (config == null) throw new IllegalArgumentException("请填写数据计分配置");
@@ -422,9 +521,9 @@ public class CspSimService {
         CspRecord r = owned(id, "EXAM", owner); finishIfExpired(r);
         if (!r.state.equals("CLOSED")) throw new IllegalStateException("结束收卷后才能正式评测");
         Exam e = decode(r, Exam.class); for (Problem p : e.problems) if (p.cases.isEmpty() || !p.dataConfirmed) throw new IllegalArgumentException("请先上传并确认全部题目的数据和分值");
-        Batch batch = new Batch(); batch.createdAt = now(); batch.review = request != null && request.reviewPaths() != null && !request.reviewPaths().isEmpty();
+        Batch batch = new Batch(); batch.round = e.round; batch.createdAt = now(); batch.review = request != null && request.reviewPaths() != null && !request.reviewPaths().isEmpty();
         CspRecord br = create("BATCH", owner, id, batch);
-        for (CspRecord pr : records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", id)) {
+        for (CspRecord pr : participants(id)) {
             if (batch.review && !request.reviewPaths().containsKey(pr.id)) continue;
             Participation p = decode(pr, Participation.class); CspRecord sr = get(p.latestSubmission, "SUBMISSION", false); Submission s = decode(sr, Submission.class);
             for (Problem problem : e.problems) {
@@ -445,7 +544,7 @@ public class CspSimService {
     }
     private Map<String,Object> batchSummary(CspRecord br) {
         Batch b = decode(br, Batch.class); long done = records.findByKindAndParentIdOrderByUpdatedAtAsc("TASK", br.id).stream().filter(t -> t.state.equals("DONE")).count();
-        return Map.of("id", br.id, "review", b.review, "createdAt", b.createdAt, "total", b.taskIds.size(), "done", done);
+        return Map.of("id", br.id, "review", b.review, "createdAt", b.createdAt, "total", b.taskIds.size(), "done", done, "round", b.round, "published", b.published);
     }
     private Map<String,Object> batchView(String id, String selfStudent) {
         CspRecord br = get(id, "BATCH", false); Batch batch = decode(br, Batch.class);
@@ -474,18 +573,20 @@ public class CspSimService {
     }
     public Map<String,Object> publish(String owner, String examId, String batchId) {
         CspRecord r = owned(examId, "EXAM", owner); CspRecord br = owned(batchId, "BATCH", owner);
-        if (!br.parentId.equals(examId) || decode(br, Batch.class).review) throw new IllegalArgumentException("复盘评测不能作为正式榜单发布");
+        if (!br.parentId.equals(examId) || decode(br, Batch.class).round != decode(r,Exam.class).round || decode(br, Batch.class).review) throw new IllegalArgumentException("复盘或历史轮次的评测不能作为本轮正式榜单发布");
         if (records.findByKindAndParentIdOrderByUpdatedAtAsc("TASK", batchId).stream().anyMatch(t -> !t.state.equals("DONE"))) throw new IllegalStateException("评测尚未完成，系统故障任务需重试");
+        Batch published = decode(br,Batch.class); published.published = true; save(br,published);
         Exam e = decode(r, Exam.class); e.publishedBatch = batchId; save(r, e); return teacherExam(owner, examId);
     }
     public byte[] scoresCsv(String owner, String examId, String batchId) {
-        Map<String,Object> view = teacherBatch(owner, examId, batchId); Exam e = decode(get(examId,"EXAM",false), Exam.class);
+        Map<String,Object> view = teacherBatch(owner, examId, batchId);
+        List<Problem> batchProblems=records.findByKindAndParentIdOrderByUpdatedAtAsc("TASK",batchId).stream().map(t->decode(t,Task.class).problem).collect(java.util.stream.Collectors.toMap(p->p.id,p->p,(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         if (!view.get("done").equals(Long.valueOf(((Number)view.get("total")).longValue()))) throw new IllegalStateException("评测尚未完成，不能导出正式成绩");
-        StringBuilder csv = new StringBuilder("\uFEFF排名,姓名,班级,学号,总分"); for (Problem p : e.problems) csv.append(',').append(CspFiles.csvCell(p.name)); csv.append("\r\n");
+        StringBuilder csv = new StringBuilder("\uFEFF排名,姓名,班级,学号,总分"); for (Problem p : batchProblems) csv.append(',').append(CspFiles.csvCell(p.name)); csv.append("\r\n");
         @SuppressWarnings("unchecked") List<Map<String,Object>> rows = (List<Map<String,Object>>) view.get("leaderboard");
         for (var row : rows) {
             List<Object> cells = new ArrayList<>(List.of(row.get("rank"), row.get("name"), row.get("className"), row.get("studentNumber"), row.get("score")));
-            for (Problem p : e.problems) {
+            for (Problem p : batchProblems) {
                 Task task = records.findByKindAndParentIdOrderByUpdatedAtAsc("TASK", batchId).stream().map(t -> decode(t, Task.class)).filter(t -> t.studentId.equals(row.get("id")) && t.problemId.equals(p.id)).findFirst().orElseThrow();
                 cells.add(task.result == null ? "未完成" : task.result.score);
             }
@@ -496,7 +597,7 @@ public class CspSimService {
     public void exportSources(String owner, String id, OutputStream output) throws IOException {
         CspRecord er = owned(id, "EXAM", owner); finishIfExpired(er);
         ZipOutputStream zip = new ZipOutputStream(output);
-        for (CspRecord pr : records.findByKindAndParentIdOrderByUpdatedAtAsc("PARTICIPATION", id)) {
+        for (CspRecord pr : participants(id)) {
             Participation p = decode(pr, Participation.class); Map<String,Entry> entries = p.latestSubmission == null ? p.entries : decode(get(p.latestSubmission, "SUBMISSION", false), Submission.class).entries;
             Map<String,Object> manifest = new LinkedHashMap<>(); manifest.put("student", studentView(get(p.studentId,"STUDENT",false),false)); manifest.put("submissionId", p.latestSubmission); manifest.put("entries", entries);
             zip.putNextEntry(new ZipEntry(pr.id + "/manifest.json")); zip.write(encode(manifest).getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
@@ -545,6 +646,7 @@ public class CspSimService {
         if (result.verdict.equals("CE")) return BigDecimal.ZERO;
         Map<String,CaseResult> byId = new HashMap<>();
         for (CaseResult c : result.cases) {
+            if (c.message == null || c.message.length()>2000 || c.expected == null || c.expected.length()>400 || c.actual == null || c.actual.length()>400 || c.differenceLine<0 || c.differenceColumn<0) throw new IllegalArgumentException("测试点诊断信息无效");
             if (c.id == null || !Set.of("AC", "WA", "TLE", "MLE", "RE", "OLE").contains(c.verdict) || byId.putIfAbsent(c.id,c) != null) throw new IllegalArgumentException("测试点结果无效");
         }
         if (byId.size() != p.cases.size() || p.cases.stream().anyMatch(c -> !byId.containsKey(c.id))) throw new IllegalArgumentException("测试点结果不完整");

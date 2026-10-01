@@ -27,7 +27,7 @@
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       if (teacher && response.status === 401) location.href = '/tools.html?auth=login&next=' + encodeURIComponent('/csp-sim.html');
-      throw new Error(error.error || error.message || `请求失败（${response.status}）`);
+      const failure = new Error(error.error || error.message || `请求失败（${response.status}）`); failure.status=response.status; throw failure;
     }
     return binary ? response.blob() : response.json().catch(() => ({}));
   }
@@ -75,10 +75,22 @@
     const directory = 'task' + index;
     return `<section class="task-form" data-task-row><div class="actions"><h3>题目 ${index}</h3><button class="text-button" type="button" data-action="remove-problem" style="margin-left:auto">移除</button></div><div class="form-grid"><label>题目名称<input name="taskName" required value="题目 ${index}" maxlength="80"></label><label>题目目录<input name="directory" required value="${directory}" maxlength="150"></label><label>源码文件名<input name="sourceName" required value="${directory}.cpp" maxlength="150"></label><label>满分<input name="maxScore" type="number" min="1" max="1000" value="100" required></label><label>时间限制（毫秒）<input name="timeLimitMs" type="number" min="100" max="30000" value="1000" required></label><label>内存限制（MB）<input name="memoryMb" type="number" min="16" max="1024" value="256" required></label><label>输入输出方式<select name="ioMode"><option value="FILE">指定文件读写</option><option value="STDIO">标准输入输出</option></select></label><label>输入文件名<input name="inputName" value="${directory}.in"></label><label>输出文件名<input name="outputName" value="${directory}.out"></label></div><label>题面 / 操作要求<textarea name="statement" maxlength="100000" placeholder="粘贴题目说明，或写明学生应遵守的操作要求。"></textarea></label></section>`;
   }
-  function createExamDialog() {
-    const eligible = students.filter(s=>s.enabled);
+  function createExamDialog(edit = false) {
+    const eligible = students.filter(s=>s.enabled || edit && currentExam.students.some(m=>m.id===s.id));
     if (!eligible.length) { toast('请先添加学生'); return; }
-    openDialog('新建 CSP 模拟考场', `<form id="examForm"><div class="form-grid"><label class="span-2">考场名称<input name="name" value="CSP 复赛目录训练" maxlength="80" required></label><label>文件环境<select name="environment"><option value="LINUX">Linux 文件管理</option><option value="WINDOWS">Windows 文件管理</option></select></label><label>训练模式<select name="mode"><option value="TEACHING">教学练习 · 可检查目录</option><option value="EXAM">模拟考试 · 考后检查目录</option></select></label><label>组别<select name="group"><option value="J">CSP-J</option><option value="S">CSP-S</option></select></label><label>时长（分钟）<input name="durationMinutes" type="number" min="1" max="600" value="210" required></label><label>地区代码<input name="regionCode" value="GD" required minlength="2" maxlength="10" pattern="[A-Za-z]{2,10}" title="广东为 GD，使用英文字母地区代码"></label><label>指定答案根目录<input name="rootPath" value="/home/noi/Desktop" required></label><label>文件夹规则预设<select name="folderPreset"><option value="{examNumber}">地区-组别学号 · GD-J10002</option><option value="{region}-{studentNumber}">地区代码-名单学号 · GD-001</option><option value="custom">自定义规则</option></select></label><label>考生文件夹命名规则<input name="folderPattern" value="{examNumber}" required></label></div><small>默认在 Windows 的 D 盘或 Linux 桌面创建考生文件夹，再建立题目目录。模拟准考证号按“地区代码-组别学号”生成：学号 10002 在 J 组为 GD-J10002，在 S 组为 GD-S10002，学号前导零保留。规则支持 {examNumber}、{region}、{name}、{studentNumber}，也可逐人自定义。</small><h3 class="form-section">选择学生 <small>最多 60 人</small></h3><div class="student-picks">${eligible.map((s,i)=>`<div class="student-pick" data-student-pick data-id="${s.id}"><input type="checkbox" name="selected" ${i<60?'checked':''} aria-label="选择${esc(s.name)}"><span>${esc(s.name)} <small>${esc(s.className)} · ${esc(s.studentNumber)}</small></span><input type="text" name="examNumber" data-student-number="${esc(s.studentNumber)}" data-generated="GD-J${esc(s.studentNumber)}" value="GD-J${esc(s.studentNumber)}" aria-label="模拟准考证号" title="模拟准考证号"><input type="text" name="folderName" placeholder="按规则生成" aria-label="自定义答案文件夹名" title="留空时按上方规则生成"></div>`).join('')}</div><h3 class="form-section">题目与提交规则</h3><div id="taskForms">${[1,2,3,4].map(taskForm).join('')}</div><button class="button" type="button" data-action="add-problem">＋ 添加题目</button><p class="form-error" role="alert"></p></form>`, '<button class="button" data-action="close-dialog">取消</button><button class="button primary" type="submit" form="examForm">创建考场</button>');
+    openDialog(edit ? '编辑 CSP 模拟考场' : '新建 CSP 模拟考场', `<form id="examForm" data-id="${edit?currentExam.id:''}"><div class="form-grid"><label class="span-2">考场名称<input name="name" value="CSP 复赛目录训练" maxlength="80" required></label><label>文件环境<select name="environment"><option value="LINUX">Linux 文件管理</option><option value="WINDOWS">Windows 文件管理</option></select></label><label>训练模式<select name="mode"><option value="TEACHING">教学练习 · 可检查目录</option><option value="EXAM">模拟考试 · 考后检查目录</option></select></label><label>组别<select name="group"><option value="J">CSP-J</option><option value="S">CSP-S</option></select></label><label>时长（分钟）<input name="durationMinutes" type="number" min="1" max="600" value="210" required></label><label>地区代码<input name="regionCode" value="GD" required minlength="2" maxlength="10" pattern="[A-Za-z]{2,10}" title="广东为 GD，使用英文字母地区代码"></label><label>指定答案根目录<input name="rootPath" value="/home/noi/Desktop" required></label><label>文件夹规则预设<select name="folderPreset"><option value="{examNumber}">地区-组别学号 · GD-J10002</option><option value="{region}-{studentNumber}">地区代码-名单学号 · GD-001</option><option value="custom">自定义规则</option></select></label><label>考生文件夹命名规则<input name="folderPattern" value="{examNumber}" required></label></div><small>默认在 Windows 的 D 盘或 Linux 桌面创建考生文件夹，再建立题目目录。模拟准考证号按“地区代码-组别学号”生成：学号 10002 在 J 组为 GD-J10002，在 S 组为 GD-S10002，学号前导零保留。规则支持 {examNumber}、{region}、{name}、{studentNumber}，也可逐人自定义。</small><h3 class="form-section">选择学生 <small>最多 60 人</small></h3><div class="student-picks">${eligible.map((s,i)=>`<div class="student-pick" data-student-pick data-id="${s.id}"><input type="checkbox" name="selected" ${i<60?'checked':''} aria-label="选择${esc(s.name)}"><span>${esc(s.name)} <small>${esc(s.className)} · ${esc(s.studentNumber)}</small></span><input type="text" name="examNumber" data-student-number="${esc(s.studentNumber)}" data-generated="GD-J${esc(s.studentNumber)}" value="GD-J${esc(s.studentNumber)}" aria-label="模拟准考证号" title="模拟准考证号"><input type="text" name="folderName" placeholder="按规则生成" aria-label="自定义答案文件夹名" title="留空时按上方规则生成"></div>`).join('')}</div><h3 class="form-section">题目与提交规则</h3><div id="taskForms">${(edit?currentExam.exam.problems:[1,2,3,4]).map((p,i)=>taskForm(i+1)).join('')}</div><button class="button" type="button" data-action="add-problem">＋ 添加题目</button><p class="form-error" role="alert"></p></form>`, `<button class="button" data-action="close-dialog">取消</button><button class="button primary" type="submit" form="examForm">${edit?'保存修改':'创建考场'}</button>`);
+    if (edit) {
+      const form=$('#examForm'), e=currentExam.exam;
+      ['name','environment','mode','group','regionCode','durationMinutes','rootPath','folderPattern'].forEach(n=>$(`[name="${n}"]`,form).value=e[n]);
+      $('[name="folderPreset"]',form).value=['{examNumber}','{region}-{studentNumber}'].includes(e.folderPattern)?e.folderPattern:'custom';
+      $$('[data-student-pick]',form).forEach(row=>{const member=currentExam.students.find(m=>m.id===row.dataset.id);$('[name="selected"]',row).checked=!!member;if(member){const number=$('[name="examNumber"]',row);number.value=member.examNumber;number.dataset.generated=e.regionCode+'-'+e.group+member.studentNumber;const expected=e.folderPattern.replaceAll('{examNumber}',member.examNumber).replaceAll('{region}',e.regionCode).replaceAll('{name}',member.name).replaceAll('{studentNumber}',member.studentNumber);$('[name="folderName"]',row).value=member.folderName===expected?'':member.folderName;}});
+      $$('[data-task-row]',form).forEach((row,i)=>{const p=e.problems[i];row.dataset.id=p.id;['name','directory','sourceName','maxScore','timeLimitMs','memoryMb','ioMode','inputName','outputName','statement'].forEach(n=>$(`[name="${n==='name'?'taskName':n}"]`,row).value=p[n]??'');});
+      if(currentExam.state==='CLOSED') {
+        ['environment','group','regionCode','rootPath','folderPattern','folderPreset'].forEach(n=>$(`[name="${n}"]`,form).disabled=true);
+        $$('[data-student-pick] input,[data-action="add-problem"],[data-action="remove-problem"]',form).forEach(el=>el.disabled=true);
+        form.insertAdjacentHTML('afterbegin','<div class="notice">本轮已收卷，可修改题目、输入输出方式与限制后重测。若要修改学生名单或文件环境，请先“重新开始”准备新一轮。旧评测批次保留原来的配置。</div>');
+      }
+    }
   }
   async function openExam(id) {
     currentExam = await request('/exams/' + id); activeView = 'exam'; activeBatch = null; renderSidebar(); renderExam();
@@ -87,13 +99,13 @@
     const {exam:e,students:members,state,id,batches} = currentExam;
     const joined = members.filter(s=>s.joined).length, submitted = members.filter(s=>s.latestSubmission).length;
     const joinUrl = location.origin + '/csp-sim-student.html?exam=' + encodeURIComponent(e.joinCode);
-    $('#teacherMain').innerHTML = `<div class="page-heading"><div><span class="eyebrow">CSP ${esc(e.group)} · ${e.mode==='EXAM'?'MOCK EXAM':'TRAINING'}</span><h1>${esc(e.name)} ${badge(stateLabel(state),state==='OPEN'?'green':'blue')}</h1><p>${e.environment==='LINUX'?'Linux':'Windows'} 文件管理 · ${e.durationMinutes} 分钟 · ${e.problems.length} 题</p></div><div class="actions"><button class="button" data-action="copy-join">复制学生加入链接</button>${state==='DRAFT'?'<button class="button" data-action="update-admission">按学号更新考号和目录</button><button class="button primary" data-action="start-exam">开始考场</button>':state==='OPEN'?'<button class="button danger" data-action="close-exam">结束并统一收卷</button>':'<button class="button primary" data-action="grade">批量评测 / 重测</button>'}</div></div>
+    $('#teacherMain').innerHTML = `<div class="page-heading"><div><span class="eyebrow">CSP ${esc(e.group)} · ${e.mode==='EXAM'?'MOCK EXAM':'TRAINING'}</span><h1>${esc(e.name)} ${badge(stateLabel(state),state==='OPEN'?'green':'blue')}</h1><p>${e.environment==='LINUX'?'Linux':'Windows'} 文件管理 · ${e.durationMinutes} 分钟 · ${e.problems.length} 题 · 第 ${e.round||1} 轮</p></div><div class="actions"><button class="button" data-action="copy-join">复制学生加入链接</button>${state!=='OPEN'?'<button class="button" data-action="edit-exam">编辑考场</button>':''}${state==='CLOSED'?'<button class="button" data-action="restart-exam">重新开始</button>':''}${state==='DRAFT'?'<button class="button" data-action="update-admission">按学号更新考号和目录</button><button class="button primary" data-action="start-exam">开始考场</button>':state==='OPEN'?'<button class="button danger" data-action="close-exam">结束并统一收卷</button>':'<button class="button primary" data-action="grade">批量评测 / 重测</button>'}</div></div>
       <div class="metrics"><div class="metric"><span>考场学生</span><strong>${members.length}</strong></div><div class="metric"><span>已进入</span><strong>${joined}</strong></div><div class="metric"><span>已交卷</span><strong>${submitted}</strong></div><div class="metric"><span>截止时间</span><strong style="font-size:15px">${e.deadline?esc(time(e.deadline)):'开考后开始计时'}</strong></div></div>
       <div class="exam-rule"><span>考场编号 <code>${esc(e.joinCode)}</code></span><span>答案根目录 <code>${esc(displayPath(e.rootPath))}</code></span><span>文件夹规则 <code>${esc(e.folderPattern)}</code></span><span>同分并列 · 教师统一发布成绩</span></div>
       ${state==='DRAFT'?'<div class="notice">开考前学生可进入查看规则。学生需自己创建考生目录和题目目录，系统不会自动整理答案。</div>':state==='CLOSED'?'<div class="notice">答案已锁定。正式评测采用每位学生的最后一次交卷；未主动交卷者已自动收取文件。先确认所有题目的数据分值，再发起评测。</div>':''}
-      <div class="card"><div class="card-head"><h2>题目与评测数据</h2><span class="muted" style="font-size:12px">隐藏数据仅教师可见</span></div><div class="card-body problem-grid">${e.problems.map((p,i)=>`<article class="problem-card"><h3>${i+1}. ${esc(p.name)} ${badge(p.cases.length?`${p.cases.length} 组 · ${p.dataConfirmed?'已确认':'待确认'}`:'未上传数据',p.dataConfirmed?'green':'orange')}</h3><code>${esc(p.directory)}/${esc(p.sourceName)}</code><p>${p.maxScore} 分 · ${p.timeLimitMs} ms · ${p.memoryMb} MB<br>${p.ioMode==='FILE'?`${esc(p.inputName)} → ${esc(p.outputName)}`:'标准输入输出'} · ${p.scoring==='SUBTASKS'?'子任务计分':'测试点计分'} · ${p.samples.length} 组公开样例</p><div class="actions"><button class="button small" data-action="upload-data" data-id="${p.id}">上传数据 ZIP</button><button class="button small" data-action="generated-data" data-id="${p.id}">本站数据</button><button class="button small" data-action="data-config" data-id="${p.id}" ${p.cases.length?'':'disabled'}>确认分值</button><button class="text-button" data-action="upload-samples" data-id="${p.id}">上传样例</button></div></article>`).join('')}</div></div>
+      <div class="card"><div class="card-head"><h2>题目与评测数据</h2><span class="muted" style="font-size:12px">隐藏数据仅教师可见</span></div><div class="card-body problem-grid">${e.problems.map((p,i)=>`<article class="problem-card"><h3>${i+1}. ${esc(p.name)} ${badge(p.cases.length?`${p.cases.length} 组 · ${p.dataConfirmed?'已确认':'待确认'}`:'未上传数据',p.dataConfirmed?'green':'orange')}</h3><code>${esc(p.directory)}/${esc(p.sourceName)}</code><p>${p.maxScore} 分 · ${p.timeLimitMs} ms · ${p.memoryMb} MB<br>${p.ioMode==='FILE'?`${esc(p.inputName)} → ${esc(p.outputName)}`:'标准输入输出'} · ${p.scoring==='SUBTASKS'?'子任务计分':'测试点计分'} · ${p.samples.length} 组公开样例</p><div class="actions"><button class="button small" data-action="upload-data" data-id="${p.id}">上传数据（ZIP / 多文件）</button><button class="button small" data-action="generated-data" data-id="${p.id}">本站数据</button><button class="button small" data-action="data-config" data-id="${p.id}" ${p.cases.length?'':'disabled'}>确认分值</button><button class="text-button" data-action="upload-samples" data-id="${p.id}">上传样例</button><button class="text-button" data-action="data-files" data-id="${p.id}" ${p.cases.length?'':'disabled'}>查看测试数据</button>${p.samples.length?`<button class="text-button" data-action="sample-files" data-id="${p.id}">查看样例数据</button>`:''}</div></article>`).join('')}</div></div>
       <div class="card"><div class="card-head"><h2>学生状态与交卷</h2><a class="text-button" href="${API}/exams/${id}/sources">导出源码包 ↗</a></div><div class="table-scroll"><table><thead><tr><th>学生</th><th>模拟准考证号</th><th>答案文件夹名</th><th>进入状态</th><th>文件</th><th>交卷</th><th>查看</th></tr></thead><tbody>${members.map(s=>`<tr><td><strong>${esc(s.name)}</strong><br><small>${esc(s.className)} · ${esc(s.studentNumber)}</small></td><td><code>${esc(s.examNumber)}</code></td><td>${esc(s.folderName)}</td><td>${badge(s.joined?'已进入':'未进入',s.joined?'green':'')}</td><td>${s.fileCount}</td><td>${badge(s.latestSubmission?'已保存交卷':'未交卷',s.latestSubmission?'blue':'')}</td><td><button class="text-button" data-action="submissions" data-id="${s.participationId}">文件与记录</button></td></tr>`).join('')}</tbody></table></div></div>
-      <div class="card"><div class="card-head"><h2>评测批次</h2><small>重测保留旧结果，发布后学生才能看到成绩。</small></div><div class="table-scroll"><table><thead><tr><th>创建时间</th><th>类型</th><th>完成进度</th><th>成绩状态</th><th>操作</th></tr></thead><tbody>${batches.map(b=>`<tr><td>${esc(time(b.createdAt))}</td><td>${badge(b.review?'复盘':'正式',b.review?'orange':'blue')}</td><td>${b.done} / ${b.total}</td><td>${e.publishedBatch===b.id?badge('已发布','green'):'未发布'}</td><td><button class="text-button" data-action="view-batch" data-id="${b.id}">查看成绩</button></td></tr>`).join('')}</tbody></table>${batches.length?'':'<div class="empty">收卷后上传并确认数据，即可进行第一批评测。</div>'}</div></div>
+      <div class="card"><div class="card-head"><h2>评测批次</h2><small>重测保留旧结果，发布后学生才能看到成绩。</small></div><div class="table-scroll"><table><thead><tr><th>创建时间</th><th>类型</th><th>完成进度</th><th>成绩状态</th><th>操作</th></tr></thead><tbody>${batches.map(b=>`<tr><td>${esc(time(b.createdAt))}</td><td>${badge('第 '+(b.round||1)+' 轮 · '+(b.review?'复盘':'正式'),b.review?'orange':'blue')}</td><td>${b.done} / ${b.total}</td><td>${e.publishedBatch===b.id?badge('当前已发布','green'):b.published?badge('历史已发布'):'未发布'}</td><td><button class="text-button" data-action="view-batch" data-id="${b.id}">查看成绩</button></td></tr>`).join('')}</tbody></table>${batches.length?'':'<div class="empty">收卷后上传并确认数据，即可进行第一批评测。</div>'}</div></div>
       <small>学生加入地址：${esc(joinUrl)}</small>`;
   }
   function dataConfigDialog(id) {
@@ -102,12 +114,30 @@
     openDialog(p.name + ' · 确认测试点和分值', `<form id="dataConfigForm" data-id="${id}" data-version="${esc(p.dataVersion)}"><div class="notice">逐点计分时每行填写该测试点分值；子任务计分时，同组每行填写相同的整组分值，全部通过才获得该组分数。</div><div class="form-grid"><label>计分方式<select name="scoring"><option value="POINTS" ${p.scoring==='POINTS'?'selected':''}>每个测试点独立得分</option><option value="SUBTASKS" ${p.scoring==='SUBTASKS'?'selected':''}>子任务全部通过得分</option></select></label><label>题目满分<input value="${p.maxScore}" disabled></label></div><div class="table-scroll" style="max-height:360px"><table><thead><tr><th>数据</th><th>分值</th><th>子任务名称（可选）</th></tr></thead><tbody>${p.cases.map(c=>`<tr data-case-row data-id="${esc(c.id)}"><td>${esc(c.id)}</td><td><input class="cell-input" name="score" type="number" min="0" step="0.0001" required value="${c.score}"></td><td><input class="cell-input" name="subtask" maxlength="50" value="${esc(c.subtask)}" placeholder="例如 subtask1"></td></tr>`).join('')}</tbody></table></div><p class="form-error" role="alert"></p></form>`, '<button class="button" data-action="close-dialog">取消</button><button class="button primary" form="dataConfigForm" type="submit">确认并保存计分规则</button>');
   }
   async function uploadData(id, samples) {
-    chooseFile('.zip', async uploads => {
+    chooseFile('.zip,.in,.out,.ans', async uploads => {
       if (!uploads.length) return;
-      const form = new FormData(); form.append('file',uploads[0]);
-      currentExam = await request(`/exams/${currentExam.id}/problems/${id}/data?samples=${samples}`,{method:'POST',body:form}); renderExam();
+      if(uploads.reduce((n,f)=>n+f.size,0)>25*1048576)throw new Error('一次数据上传合计最多25MB');
+      const zip=uploads.length===1 && /\.zip$/i.test(uploads[0].name);
+      if(!zip && uploads.some(f=>/\.zip$/i.test(f.name)))throw new Error('请选择一个ZIP，或多选配对的.in与.out/.ans文件');
+      const form = new FormData(); uploads.forEach(file=>form.append(zip?'file':'files',file));
+      currentExam = await request(`/exams/${currentExam.id}/problems/${id}/${zip?'data':'data-files'}?samples=${samples}`,{method:'POST',body:form}); renderExam();
       toast(samples?'样例已公开给学生':'数据已导入，请确认分值'); if (!samples) dataConfigDialog(id);
-    });
+    }, true);
+  }
+  async function dataFilesDialog(problemId, samples = false) {
+    const list=await request(`/exams/${currentExam.id}/problems/${problemId}/data-files?samples=${samples}`);
+    const p=currentExam.exam.problems.find(p=>p.id===problemId);
+    function cell(c,kind,size) {
+      const query=new URLSearchParams({caseId:c.id,kind,samples,download:true});
+      return `${bytes(size)} ${size<=c.previewLimit?`<button class="text-button" data-action="preview-data" data-id="${problemId}" data-case="${esc(c.id)}" data-kind="${kind}" data-samples="${samples}">预览</button>`:'<small>数据较大，请下载查看</small>'} <a class="text-button" href="${API}/exams/${currentExam.id}/problems/${problemId}/data-file?${esc(query)}">下载</a>`;
+    }
+    openDialog(p.name+' · '+(samples?'公开样例':'测试数据'),`<div class="notice">128 KB 以内支持只读预览，较大的文件请下载查看。测试数据仅教师可以访问。</div><div class="table-scroll"><table><thead><tr><th>测试点</th><th>输入</th><th>答案</th></tr></thead><tbody>${list.map(c=>`<tr><td>${esc(c.id)}</td><td>${cell(c,'input',c.inputBytes)}</td><td>${cell(c,'answer',c.answerBytes)}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+  async function previewData(button) {
+    const {id,case:caseId,kind,samples}=button.dataset;
+    const query=new URLSearchParams({caseId,kind,samples});
+    const blob=await request(`/exams/${currentExam.id}/problems/${id}/data-file?${query}`,{binary:true});
+    openDialog(caseId+(kind==='input'?'.in':' · 答案'),`<pre class="detail-pre">${esc(await blob.text())}</pre>`, `<button class="button" data-action="${samples==='true'?'sample-files':'data-files'}" data-id="${id}">返回数据清单</button>`);
   }
   async function generatedDataDialog(problemId) {
     const jobs = (await fetch('/api/jobs').then(r=>r.json())).filter(j=>j.status==='COMPLETED');
@@ -126,27 +156,44 @@
   function renderBatchDialog() {
     const b=activeBatch;
     openDialog(b.review?'复盘评测结果':'正式评测结果', `<div class="notice">已完成 ${b.done} / ${b.total} 项。${b.review?'本次只用于复盘，不会改变正式成绩。':'系统故障可重试；全部完成后才能发布。'}</div>${resultsTable(b,true)}<h3 class="form-section">${b.review?'本次复盘得分':'班级排名'}</h3>${leaderboardTable(b)}`,
-      `<button class="button" data-action="view-batch" data-id="${b.id}">刷新结果</button><button class="button" data-action="retry-batch" data-id="${b.id}">重试故障任务</button><a class="button" href="${API}/exams/${currentExam.id}/batches/${b.id}/export">导出成绩</a>${b.review?'':`<button class="button primary" data-action="publish-batch" data-id="${b.id}" ${b.done===b.total?'':'disabled'}>发布本批成绩</button>`}`);
+      `<button class="button" data-action="view-batch" data-id="${b.id}">刷新结果</button><button class="button" data-action="retry-batch" data-id="${b.id}">重试故障任务</button><a class="button" href="${API}/exams/${currentExam.id}/batches/${b.id}/export">导出成绩</a>${b.review||(b.round||1)!==(currentExam.exam.round||1)?'':`<button class="button primary" data-action="publish-batch" data-id="${b.id}" ${b.done===b.total?'':'disabled'}>发布本批成绩</button>`}`);
   }
   async function submissionsDialog(participationId) {
     const s=currentExam.students.find(s=>s.participationId===participationId);
     const info=await request(`/exams/${currentExam.id}/students/${participationId}/submissions`);
-    const latest=info.submissions.at(-1);
+    const latest=info.submissions.filter(x=>(x.submission.round||1)===(currentExam.exam.round||1)).at(-1);
     const entries=latest?.submission.entries || info.entries;
-    openDialog(s.name+' · 文件与交卷记录', `<div class="notice">${latest?'下方为最近一次交卷的文件。':'尚未交卷，下方为当前工作区。'}点击文件可只读查看。正式评测不会自动寻找错误位置的代码。</div><div class="table-scroll"><table><thead><tr><th>交卷时间</th><th>方式</th><th>文件数</th></tr></thead><tbody>${info.submissions.map(x=>`<tr><td>${esc(time(x.submission.submittedAt))}</td><td>${x.submission.automatic?'到时自动收卷':'学生主动交卷'}</td><td>${Object.values(x.submission.entries).filter(e=>!e.directory).length}</td></tr>`).join('')}</tbody></table></div><h3 class="form-section">文件清单</h3><div class="file-path-list">${Object.entries(entries).filter(([,e])=>!e.directory).map(([p,e])=>`<button data-action="teacher-file" data-id="${participationId}" data-submission="${latest?.id || ''}" data-path="${esc(p)}">${esc(displayPath(p))} <small>· ${bytes(e.bytes)}</small></button>`).join('') || '<p class="empty">暂无文件</p>'}</div>${currentExam.state==='CLOSED' && latest?`<form id="reviewForm" data-id="${participationId}"><h3 class="form-section">选择错误位置的代码进行复盘</h3><div class="form-grid"><label>对应题目<select name="problemId">${currentExam.exam.problems.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>交卷中的代码<select name="sourcePath" required>${Object.entries(entries).filter(([path,e])=>!e.directory && path.endsWith('.cpp')).map(([path])=>`<option value="${esc(path)}">${esc(displayPath(path))}</option>`).join('')}</select></label></div><p class="form-error"></p><button class="button" type="submit">只评测所选代码用于复盘</button></form>`:''}`);
+    openDialog(s.name+' · 文件与交卷记录', `<div class="notice">${latest?'下方为最近一次交卷的文件。':'尚未交卷，下方为当前工作区。'}点击文件可只读查看。正式评测不会自动寻找错误位置的代码。</div><div class="table-scroll"><table><thead><tr><th>轮次</th><th>交卷时间</th><th>方式</th><th>文件数</th><th>副本</th></tr></thead><tbody>${info.submissions.map(x=>`<tr><td>第 ${x.submission.round||1} 轮</td><td>${esc(time(x.submission.submittedAt))}</td><td>${x.submission.automatic?'到时自动收卷':'学生主动交卷'}</td><td>${Object.values(x.submission.entries).filter(e=>!e.directory).length}</td><td><button class="text-button" data-action="submission-files" data-id="${participationId}" data-submission="${x.id}">查看副本</button></td></tr>`).join('')}</tbody></table></div><h3 class="form-section">文件清单</h3><div class="file-path-list">${Object.entries(entries).filter(([,e])=>!e.directory).map(([p,e])=>`<button data-action="teacher-file" data-id="${participationId}" data-submission="${latest?.id || ''}" data-path="${esc(p)}">${esc(displayPath(p))} <small>· ${bytes(e.bytes)}</small></button>`).join('') || '<p class="empty">暂无文件</p>'}</div>${currentExam.state==='CLOSED' && latest?`<form id="reviewForm" data-id="${participationId}"><h3 class="form-section">选择错误位置的代码进行复盘</h3><div class="form-grid"><label>对应题目<select name="problemId">${currentExam.exam.problems.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>交卷中的代码<select name="sourcePath" required>${Object.entries(entries).filter(([path,e])=>!e.directory && path.endsWith('.cpp')).map(([path])=>`<option value="${esc(path)}">${esc(displayPath(path))}</option>`).join('')}</select></label></div><p class="form-error"></p><button class="button" type="submit">只评测所选代码用于复盘</button></form>`:''}`);
   }
 
   function sessionKey(exam) { return 'dataforge-csp-session:' + exam; }
+  function storedSession(key) {try{return JSON.parse(localStorage.getItem(key)||sessionStorage.getItem(key)||'null');}catch{return null;}}
+  function rememberSession() {
+    if(!session)return;
+    session.folder=folder; session.examCode=workspace?.examCode||session.examCode;
+    const data=JSON.stringify(session), keys=[sessionKey(session.examCode),'dataforge-csp-last-session'];
+    if(workspace?.examId)keys.push(sessionKey(workspace.examId));
+    keys.forEach(key=>{try{localStorage.setItem(key,data);}catch{sessionStorage.setItem(key,data);}});
+    const url=new URL(location.href);if(url.searchParams.get('exam')!==session.examCode){url.searchParams.set('exam',session.examCode);history.replaceState(null,'',url);}
+  }
+  function forgetSession() {
+    [sessionKey(session?.examCode),sessionKey(workspace?.examId),'dataforge-csp-last-session'].forEach(key=>{localStorage.removeItem(key);sessionStorage.removeItem(key);});
+  }
+
   async function studentRefresh(render = true) {
     if (!session) return;
-    const firstLoad = workspace === null;
+    const firstLoad = workspace === null, previousRound=workspace?.round;
     workspace=await request('/student/'+session.participationId,{token:session.token});
     serverOffset=new Date(workspace.serverTime).getTime()-Date.now();
-    if (firstLoad || !workspace.entries[folder]?.directory) folder=workspace.rootPath;
+    if(firstLoad && session.folder && workspace.entries[session.folder]?.directory)folder=session.folder;
+    if(previousRound && previousRound!==workspace.round){folder=workspace.rootPath;selected='';previewText='';previewPath='';}
+    if (!workspace.entries[folder]?.directory) folder=workspace.rootPath;
+    rememberSession();
     if (selected && !workspace.entries[selected]) { selected=''; previewText=''; previewPath=''; }
     if (render) renderDesktop();
   }
   function renderDesktop() {
+    rememberSession();
     $('#studentLogout').hidden=false;
     const w=workspace, editable=w.state==='OPEN', canUpload=editable&&!(w.environment==='WINDOWS'&&folder==='/');
     const dirs=Object.keys(w.entries).filter(p=>w.entries[p].directory).sort((a,b)=>a.localeCompare(b));
@@ -263,7 +310,7 @@
   async function resultDetail(id) {
     const task=(teacher?activeBatch:workspace.results)?.tasks.find(t=>t.id===id);
     if (!task) return;
-    openDialog(task.problemName+' · 评测详情', `<div class="notice">源码位置：${esc(displayPath(task.sourcePath))}<br>状态：${esc(task.state==='DONE'?verdictLabel(task.result?.verdict):stateLabel(task.state))} · 得分：${task.result?.score ?? '—'}</div>${task.directoryIssues.length?`<div class="notice warning">${task.directoryIssues.map(esc).join('<br>')}</div>`:''}${task.result?.message?`<pre class="detail-pre">${esc(task.result.message)}</pre>`:''}<div class="table-scroll"><table><thead><tr><th>测试点</th><th>结果</th><th>时间</th><th>内存</th></tr></thead><tbody>${(task.result?.cases||[]).map(c=>`<tr><td>${esc(c.id)}</td><td>${esc(verdictLabel(c.verdict))}</td><td>${c.runtimeMs} ms</td><td>${bytes(c.memoryBytes)}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px;overflow-wrap:anywhere">交卷：${esc(task.submissionId)}<br>数据版本：${esc(task.dataVersion)}<br>${esc(task.result?.environment||'')}</p>`);
+    openDialog(task.problemName+' · 评测详情', `<div class="notice">源码位置：${esc(displayPath(task.sourcePath))}<br>状态：${esc(task.state==='DONE'?verdictLabel(task.result?.verdict):stateLabel(task.state))} · 得分：${task.result?.score ?? '—'}</div>${task.directoryIssues.length?`<div class="notice warning">${task.directoryIssues.map(esc).join('<br>')}</div>`:''}${task.result?.message?`<pre class="detail-pre">${esc(task.result.message)}</pre>`:''}<div class="table-scroll"><table><thead><tr><th>测试点</th><th>结果</th><th>时间</th><th>内存</th><th>错误原因 / 输出对比</th></tr></thead><tbody>${(task.result?.cases||[]).map(c=>`<tr><td>${esc(c.id)}</td><td>${esc(verdictLabel(c.verdict))}</td><td>${c.runtimeMs} ms</td><td>${bytes(c.memoryBytes)}</td><td>${c.message?`<p>${esc(c.message)}</p>`:c.verdict==='WA'?'<p>此批次尚无错误详情，请重新评测。</p>':'—'}${c.differenceLine?`<div class="sample-grid"><div><small>预期输出（附近片段）</small><pre>${esc(c.expected)}</pre></div><div><small>学生输出（附近片段）</small><pre>${esc(c.actual)}</pre></div></div>`:''}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px;overflow-wrap:anywhere">交卷：${esc(task.submissionId)}<br>数据版本：${esc(task.dataVersion)}<br>${esc(task.result?.environment||'')}</p>`);
   }
 
   document.addEventListener('click', event => {
@@ -280,6 +327,8 @@
       else if(action==='import-roster')chooseFile('.csv',async f=>{if(!f.length)return;const data=new FormData();data.append('file',f[0]);await request('/students/import',{method:'POST',body:data});await loadTeacher();toast('名单已导入');});
       else if(action==='roster-template')saveBlob(new Blob(['\uFEFF姓名,班级,学号\r\n张三,竞赛一班,001\r\n李四,竞赛一班,002\r\n'],{type:'text/csv;charset=utf-8'}),'学生名单模板.csv');
       else if(action==='create-exam')createExamDialog();
+      else if(action==='edit-exam')createExamDialog(true);
+      else if(action==='restart-exam'){if(confirm('准备新一轮：本轮交卷和成绩保留，新一轮从空工作区开始。准备完成后可编辑规则，再点击“开始考场”重新计时。继续？')){currentExam=await request(`/exams/${currentExam.id}/restart`,{method:'POST'});activeBatch=null;renderExam();toast('新一轮已准备，请点击开始考场');}}
       else if(action==='open-exam')await openExam(id);
       else if(action==='add-problem'){if($$('[data-task-row]').length>=10)throw new Error('每场最多10题');$('#taskForms').insertAdjacentHTML('beforeend',taskForm($$('[data-task-row]').length+1));}
       else if(action==='remove-problem')button.closest('[data-task-row]').remove();
@@ -289,6 +338,10 @@
       else if(action==='close-exam'){if(confirm('结束后锁定全部答案，未交卷者自动收取已保存文件。是否结束？')){currentExam=await request(`/exams/${currentExam.id}/close`,{method:'POST'});renderExam();}}
       else if(action==='upload-data')await uploadData(id,false);
       else if(action==='upload-samples')await uploadData(id,true);
+      else if(action==='data-files')await dataFilesDialog(id);
+      else if(action==='sample-files')await dataFilesDialog(id,true);
+      else if(action==='preview-data')await previewData(button);
+      else if(action==='submission-files'){const info=await request(`/exams/${currentExam.id}/students/${id}/submissions`);const snapshot=info.submissions.find(x=>x.id===button.dataset.submission);openDialog('第 '+(snapshot.submission.round||1)+' 轮 · 交卷副本',`<div class="file-path-list">${Object.entries(snapshot.submission.entries).filter(([,e])=>!e.directory).map(([path,e])=>`<button data-action="teacher-file" data-id="${id}" data-submission="${snapshot.id}" data-path="${esc(path)}">${esc(displayPath(path))} · ${bytes(e.bytes)}</button>`).join('')}</div>`);}
       else if(action==='generated-data')await generatedDataDialog(id);
       else if(action==='data-config')dataConfigDialog(id);
       else if(action==='grade'){activeBatch=await request(`/exams/${currentExam.id}/grade`,{method:'POST',body:{}});currentExam=await request('/exams/'+currentExam.id);renderExam();renderBatchDialog();toast('评测批次已创建');}
@@ -310,8 +363,8 @@
       else if(action==='check-directory'){const result=await request(`/student/${session.participationId}/check`,{token:session.token});openDialog('目录规范检查',result.problems.map(p=>`<div class="problem-card" style="margin-bottom:12px"><h3>${esc(p.name)} ${badge(p.issues.length?'需要调整':'符合要求',p.issues.length?'orange':'green')}</h3><small>规定路径：${esc(displayPath(p.expected))}</small>${p.issues.length?`<p>${p.issues.map(esc).join('<br>')}</p>`:''}</div>`).join(''));}
       else if(action==='submit'){if(confirm('保存当前文件为一次交卷。截止前可修改并重新交卷，最终采用最近一次交卷。')){workspace=await request(`/student/${session.participationId}/submit`,{method:'POST',token:session.token});renderDesktop();toast('交卷副本已保存');}}
       else if(action==='student-problem')studentProblem(id);
-      else if(action==='student-history'){const history=await request(`/student/${session.participationId}/history`,{token:session.token});openDialog('我的历次训练成绩',`<table><thead><tr><th>考场</th><th>状态</th><th>总分</th><th>排名</th></tr></thead><tbody>${history.map(e=>{const own=e.results?.leaderboard.find(s=>s.id===workspace.student.id);return `<tr><td>${esc(e.name)}</td><td>${own?'已发布':stateLabel(e.state)}</td><td>${own?.score??'—'}</td><td>${own?.rank??'—'}</td></tr>`;}).join('')}</tbody></table>`);}
-      else if(action==='logout-student'){try{await request(`/student/${session.participationId}/leave`,{method:'POST',token:session.token});}finally{localStorage.removeItem(sessionKey(workspace.examCode));localStorage.removeItem(sessionKey(workspace.examId));location.reload();}}
+      else if(action==='student-history'){const history=await request(`/student/${session.participationId}/history`,{token:session.token});openDialog('我的历次训练成绩',`<table><thead><tr><th>考场</th><th>状态</th><th>总分</th><th>排名</th></tr></thead><tbody>${history.map(e=>{const own=e.results?.leaderboard.find(s=>s.id===workspace.student.id);return `<tr><td>${esc(e.name)} · 第 ${e.round||1} 轮</td><td>${own?'已发布':stateLabel(e.state)}</td><td>${own?.score??'—'}</td><td>${own?.rank??'—'}</td></tr>`;}).join('')}</tbody></table>`);}
+      else if(action==='logout-student'){try{await request(`/student/${session.participationId}/leave`,{method:'POST',token:session.token});}finally{forgetSession();location.reload();}}
     });
   });
   document.addEventListener('dblclick',event=>{const row=event.target.closest('[data-file-path]');if(row&&workspace.entries[row.dataset.filePath].directory){folder=row.dataset.filePath;selected='';previewPath='';renderDesktop();}});
@@ -337,28 +390,31 @@
   document.addEventListener('submit',event=>{
     const form=event.target;if(!['studentForm','examForm','joinForm','dataConfigForm','generatedForm','reviewForm'].includes(form.id))return;
     event.preventDefault();guarded(async()=>{
-      const data=new FormData(form),value=name=>String(data.get(name)||'');
+      const data=new FormData(form),value=name=>String(data.get(name)??form.elements.namedItem(name)?.value??'');
       if(form.id==='studentForm'){const student={name:value('name'),className:value('className'),studentNumber:value('studentNumber')};await request('/students'+(form.dataset.id?'/'+form.dataset.id:''),{method:form.dataset.id?'PUT':'POST',body:form.dataset.id?{student,enabled:value('enabled')==='true'}:student});dialog.close();await loadTeacher();toast('学生档案已保存');}
       else if(form.id==='examForm'){
-        const exam={name:value('name'),environment:value('environment'),mode:value('mode'),group:value('group'),regionCode:value('regionCode'),durationMinutes:Number(value('durationMinutes')),rootPath:value('rootPath'),folderPattern:value('folderPattern'),problems:$$('[data-task-row]',form).map(row=>{const val=n=>$(`[name="${n}"]`,row).value;return {name:val('taskName'),directory:val('directory'),sourceName:val('sourceName'),maxScore:Number(val('maxScore')),timeLimitMs:Number(val('timeLimitMs')),memoryMb:Number(val('memoryMb')),ioMode:val('ioMode'),inputName:val('inputName'),outputName:val('outputName'),statement:val('statement')};})};
+        const exam={name:value('name'),environment:value('environment'),mode:value('mode'),group:value('group'),regionCode:value('regionCode'),durationMinutes:Number(value('durationMinutes')),rootPath:value('rootPath'),folderPattern:value('folderPattern'),problems:$$('[data-task-row]',form).map(row=>{const val=n=>$(`[name="${n}"]`,row).value;return {...(row.dataset.id?{id:row.dataset.id}:{}),name:val('taskName'),directory:val('directory'),sourceName:val('sourceName'),maxScore:Number(val('maxScore')),timeLimitMs:Number(val('timeLimitMs')),memoryMb:Number(val('memoryMb')),ioMode:val('ioMode'),inputName:val('inputName'),outputName:val('outputName'),statement:val('statement')};})};
         const assignments=$$('[data-student-pick]',form).filter(row=>$('[name="selected"]',row).checked).map(row=>({studentId:row.dataset.id,examNumber:$('[name="examNumber"]',row).value,folderName:$('[name="folderName"]',row).value}));
-        currentExam=await request('/exams',{method:'POST',body:{exam,students:assignments}});activeView='exam';dialog.close();await loadTeacher();renderSidebar();renderExam();toast('考场已创建');
+        currentExam=await request('/exams'+(form.dataset.id?'/'+form.dataset.id:''),{method:form.dataset.id?'PUT':'POST',body:{exam,students:assignments}});activeView='exam';dialog.close();await loadTeacher();renderSidebar();renderExam();toast(form.dataset.id?'考场已更新':'考场已创建');
       }else if(form.id==='dataConfigForm'){const p=currentExam.exam.problems.find(p=>p.id===form.dataset.id);const cases=$$('[data-case-row]',form).map(row=>({id:row.dataset.id,score:Number($('[name="score"]',row).value),subtask:$('[name="subtask"]',row).value}));currentExam=await request(`/exams/${currentExam.id}/problems/${p.id}/data-config`,{method:'PUT',body:{dataVersion:form.dataset.version,scoring:value('scoring'),cases}});dialog.close();renderExam();toast('测试数据与分值已确认');}
       else if(form.id==='generatedForm'){const id=form.dataset.id;currentExam=await request(`/exams/${currentExam.id}/problems/${id}/generated-data`,{method:'POST',body:{jobId:value('jobId')}});renderExam();dataConfigDialog(id);}
       else if(form.id==='reviewForm'){activeBatch=await request(`/exams/${currentExam.id}/grade`,{method:'POST',body:{reviewPaths:{[form.dataset.id]:{[value('problemId')]:value('sourcePath')}}}});currentExam=await request('/exams/'+currentExam.id);renderExam();renderBatchDialog();}
       else if(form.id==='joinForm'){
-        try{session=await request('/join/'+encodeURIComponent(value('examId')),{method:'POST',body:{name:value('name'),code:value('code')}});localStorage.setItem(sessionKey(session.examCode),JSON.stringify(session));folder='/';await studentRefresh();}
-        catch(error){$('#joinError').textContent=error.message;throw error;}
+        try{session=await request('/join/'+encodeURIComponent(value('examId')),{method:'POST',body:{name:value('name'),code:value('code')}});folder='/';rememberSession();await studentRefresh();}
+        catch(error){if($('#joinError'))$('#joinError').textContent=error.message;throw error;}
       }
     });
   });
   async function initialize() {
     if(teacher){await loadTeacher();return;}
     const reference=new URLSearchParams(location.search).get('exam')||'';
-    const examCode=reference && !/^[0-9]{6}$/.test(reference) ? (await request('/join/'+encodeURIComponent(reference))).examCode : reference;
+    const last=reference?null:storedSession('dataforge-csp-last-session');
+    let examCode=reference||last?.examCode||'';
+    if(reference && !/^[0-9]{6}$/.test(reference))examCode=(await request('/join/'+encodeURIComponent(reference))).examCode;
     $('#joinForm [name="examId"]').value=examCode;
-    try{session=JSON.parse(localStorage.getItem(sessionKey(examCode))||localStorage.getItem(sessionKey(reference))||'null');}catch{session=null;}
-    if(session){try{await studentRefresh();localStorage.setItem(sessionKey(examCode),JSON.stringify(session));}catch(error){session=null;localStorage.removeItem(sessionKey(examCode));localStorage.removeItem(sessionKey(reference));toast(error.message);}}
+    session=storedSession(sessionKey(examCode))||storedSession(sessionKey(reference))||last;
+    if(session){try{await studentRefresh();}catch(error){if([403,404].includes(error.status)){forgetSession();session=null;}toast(error.message);}}
+
   }
   initialize().catch(error=>{toast(error.message);const target=teacher?$('#teacherMain'):$('#joinError');target.textContent=error.message;});
   setInterval(updateClock,1000);

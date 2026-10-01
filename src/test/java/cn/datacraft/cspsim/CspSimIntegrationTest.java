@@ -178,6 +178,68 @@ class CspSimIntegrationTest {
         sim.grade("teacher",f.examId,new GradeRequest(Map.of(f.participantId,Map.of(f.problem.id,correctFolder(f)+"/sum.cpp"))));
         assertThat(json.writeValueAsString(sim.history(f.participantId,f.token))).contains("results");
     }
+    @Test void bulkDataPairingPreviewAndDownloadsAreOwnedAndAtomic() throws Exception {
+        Fixture f=fixture("LINUX","TEACHING");
+        mvc.perform(multipart("/api/tools/csp-sim/exams/"+f.examId+"/problems/"+f.problem.id+"/data-files")
+                .file(new MockMultipartFile("files","1.in","text/plain","1 2\n".getBytes()))
+                .file(new MockMultipartFile("files","1.out","text/plain","3\n".getBytes())).with(user("teacher"))).andExpect(status().isOk());
+        String version=((Exam)sim.teacherExam("teacher",f.examId).get("exam")).problems.get(0).dataVersion;
+        assertThat(new String(sim.readData("teacher",f.examId,f.problem.id,"1","input",false,false))).isEqualTo("1 2\n");
+        assertThatThrownBy(()->sim.readData("other",f.examId,f.problem.id,"1","input",false,true)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->sim.uploadDataFiles("teacher",f.examId,f.problem.id,List.of("2.in"),List.of(new byte[1]),false)).hasMessageContaining("唯一配对");
+        assertThat(((Exam)sim.teacherExam("teacher",f.examId).get("exam")).problems.get(0).dataVersion).isEqualTo(version);
+        assertThatThrownBy(()->sim.uploadDataFiles("teacher",f.examId,f.problem.id,List.of("../1.in","1.out"),List.of(new byte[1],new byte[1]),false)).hasMessageContaining("名称无效");
+        assertThatThrownBy(()->sim.uploadDataFiles("teacher",f.examId,f.problem.id,List.of("1.in","1.in","1.out"),List.of(new byte[1],new byte[1],new byte[1]),false)).hasMessageContaining("重名");
+        byte[] large=new byte[128*1024+1];
+        sim.uploadDataFiles("teacher",f.examId,f.problem.id,List.of("big.in","big.ans"),List.of(large,"ok".getBytes()),false);
+        assertThat(sim.dataFiles("teacher",f.examId,f.problem.id,false).get(0).get("inputBytes")).isEqualTo((long)large.length);
+        assertThatThrownBy(()->sim.readData("teacher",f.examId,f.problem.id,"big","input",false,false)).hasMessageContaining("下载");
+        mvc.perform(get("/api/tools/csp-sim/exams/"+f.examId+"/problems/"+f.problem.id+"/data-file").with(user("teacher"))
+                .param("caseId","big").param("kind","input").param("download","true")).andExpect(status().isOk()).andExpect(content().bytes(large));
+    }
+    @Test void editingKeepsDataAndOldJudgingConfigurationAndRejectsActiveExamEdits() throws Exception {
+        Fixture f=fixture("LINUX","TEACHING");correctSource(f);data(f);
+        CreateExam edit=new CreateExam();edit.exam=json.convertValue(sim.teacherExam("teacher",f.examId).get("exam"),Exam.class);
+        edit.students=List.of(new Assignment(f.studentId,"SIM-J00001",null));edit.exam.name="改名";edit.exam.problems.get(0).ioMode="FILE";edit.exam.problems.get(0).inputName="sum.in";edit.exam.problems.get(0).outputName="sum.out";
+        assertThatThrownBy(()->sim.editExam("teacher",f.examId,edit)).hasMessageContaining("先结束");
+        sim.close("teacher",f.examId);String batch=(String)sim.grade("teacher",f.examId,null).get("id");
+        var changed=sim.editExam("teacher",f.examId,edit);Problem p=((Exam)changed.get("exam")).problems.get(0);
+        assertThat(p.dataConfirmed).isTrue();assertThat(p.cases).hasSize(1);assertThat(p.ioMode).isEqualTo("FILE");
+        Task claimed=(Task)sim.claim(KEY).get("task");assertThat(claimed.problem.ioMode).isEqualTo("STDIO");
+        assertThatThrownBy(()->sim.editExam("other",f.examId,edit)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+    }
+    @Test @SuppressWarnings("unchecked") void newRoundsKeepPreviousSnapshotsResultsAndStudentSessions() throws Exception {
+        Fixture f=fixture("LINUX","TEACHING");correctSource(f);data(f);sim.close("teacher",f.examId);
+        String batch=(String)sim.grade("teacher",f.examId,null).get("id");var claim=sim.claim(KEY);Task task=(Task)claim.get("task");
+        Result result=new Result();result.verdict="WA";CaseResult c=new CaseResult();c.id="data/1";c.verdict="WA";c.message="第1行第1列不一致";c.differenceLine=1;c.differenceColumn=1;c.expected="1";c.actual="2";result.cases=List.of(c);
+        sim.complete(KEY,(String)claim.get("id"),new Complete(task.leaseToken,result));sim.publish("teacher",f.examId,batch);
+        String submission=(String)sim.workspace(f.participantId,f.token).get("latestSubmission");
+        sim.restart("teacher",f.examId);var next=sim.workspace(f.participantId,f.token);
+        assertThat(next.get("round")).isEqualTo(2);assertThat(next.get("state")).isEqualTo("DRAFT");assertThat(next.get("latestSubmission")).isEqualTo("");assertThat(next).doesNotContainKey("results");
+        assertThat(((Map<String,Entry>)next.get("entries")).values()).allSatisfy(entry->assertThat(entry.directory).isTrue());
+        assertThat(new String(sim.teacherReadFile("teacher",f.examId,f.participantId,submission,correctFolder(f)+"/sum.cpp"))).isEqualTo("int main(){return 0;}");
+        assertThat(json.writeValueAsString(sim.teacherBatch("teacher",f.examId,batch))).contains("第1行第1列不一致","\"expected\":\"1\"");
+        assertThat(json.writeValueAsString(sim.history(f.participantId,f.token))).contains("\"round\":1","results");
+        assertThatThrownBy(()->sim.publish("teacher",f.examId,batch)).isInstanceOf(IllegalArgumentException.class);
+        sim.start("teacher",f.examId);correctSource(f);sim.submit(f.participantId,f.token);
+        var snapshots=(List<Map<String,Object>>)sim.submissions("teacher",f.examId,f.participantId).get("submissions");
+        assertThat(snapshots.stream().map(row->((Submission)row.get("submission")).round)).containsExactly(1,2);
+        assertThatThrownBy(()->sim.restart("teacher",f.examId)).hasMessageContaining("结束");
+    }
+    @Test @SuppressWarnings("unchecked") void draftEditingUpdatesRosterAndRevokesRemovedParticipantsWithoutDeletingHistory() throws Exception {
+        Fixture f=fixture("LINUX","TEACHING");sim.close("teacher",f.examId);sim.restart("teacher",f.examId);
+        var added=sim.addStudent("teacher",new StudentInput("新学生","算法班","10002"));
+        CreateExam edit=new CreateExam();edit.exam=json.convertValue(sim.teacherExam("teacher",f.examId).get("exam"),Exam.class);
+        edit.exam.environment="WINDOWS";edit.exam.rootPath="D:/";edit.students=List.of(new Assignment((String)added.get("id"),null,null));
+        var updated=sim.editExam("teacher",f.examId,edit);
+        assertThat((List<Map<String,Object>>)updated.get("students")).hasSize(1).first().satisfies(member->assertThat(member.get("examNumber")).isEqualTo("GD-J10002"));
+        assertThatThrownBy(()->sim.workspace(f.participantId,f.token)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(records.findById(f.participantId)).isPresent();
+        String code=((Exam)updated.get("exam")).joinCode;
+        var joined=sim.join(code,new Join("新学生","10002"));
+        assertThat(sim.workspace((String)joined.get("participationId"),(String)joined.get("token")).get("rootPath")).isEqualTo("/D");
+    }
     @Test void csvImportIsAtomicAndDuplicateNamesAreAllowed() {
         assertThat(sim.importStudents("teacher","\uFEFF姓名,班级,学号\r\n\"张,三\",一班,001\r\n\"张,三\",二班,002\r\n".getBytes(StandardCharsets.UTF_8))).hasSize(2);
         assertThatThrownBy(()->sim.importStudents("teacher","姓名,学号\n李四,003\n王五,001\n".getBytes(StandardCharsets.UTF_8))).hasMessageContaining("已存在");

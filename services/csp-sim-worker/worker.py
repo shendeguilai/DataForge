@@ -104,6 +104,28 @@ def normalize_output(content):
     return b"\n".join(line.rstrip(b" \t\r") for line in content.split(b"\n")).rstrip(b"\n")
 
 
+def explain_difference(output, answer):
+    actual, expected = normalize_output(output).decode("utf-8", "replace"), normalize_output(answer).decode("utf-8", "replace")
+    position = 0
+    while position < min(len(actual), len(expected)) and actual[position] == expected[position]:
+        position += 1
+    line = expected[:position].count("\n") + 1
+    start = expected.rfind("\n", 0, position) + 1
+    column = position - start + 1
+    def excerpt(content):
+        if position >= len(content):
+            return "〈输出结束〉"
+        left = content.rfind("\n", 0, position) + 1
+        right = content.find("\n", position)
+        if right < 0:
+            right = len(content)
+        lower, upper = max(left, position - 60), min(right, position + 100)
+        return ("…" if lower > left else "") + content[lower:upper] + ("…" if upper < right else "")
+    return {"differenceLine": line, "differenceColumn": column,
+            "expected": excerpt(expected), "actual": excerpt(actual),
+            "message": "第 %d 行第 %d 列不一致（忽略行末空格与文末换行）" % (line, column)}
+
+
 def grade_task(task, fetch_blob, sandbox):
     compiled = sandbox.run({"action": "compile", "sourceName": task["problem"].get("sourceName", "source.cpp"), "source": base64.b64encode(fetch_blob(task["sourceBlob"])).decode()})
     result = {"verdict": compiled["verdict"], "message": compiled.get("message", "")[:16000],
@@ -118,13 +140,19 @@ def grade_task(task, fetch_blob, sandbox):
                                 "outputName": problem.get("outputName"), "memoryMb": problem["memoryMb"],
                                 "timeLimitMs": problem["timeLimitMs"]})
         verdict = observed["verdict"]
+        diagnostic = {"message": observed.get("message", "")[:2000]}
         if verdict == "AC":
             output = base64.b64decode(observed.get("output", ""), validate=True)
-            verdict = "AC" if normalize_output(output) == normalize_output(fetch_blob(case["answerBlob"])) else "WA"
+            answer = fetch_blob(case["answerBlob"])
+            verdict = "AC" if normalize_output(output) == normalize_output(answer) else "WA"
+            if verdict == "WA":
+                diagnostic.update(explain_difference(output, answer))
+        elif not diagnostic["message"]:
+            diagnostic["message"] = {"TLE": "程序运行超过时间限制", "MLE": "程序内存超过限制", "RE": "程序异常退出", "OLE": "程序输出超过限制"}.get(verdict, "")
         if verdict not in {"AC", "WA", "TLE", "MLE", "RE", "OLE"}:
             raise RuntimeError("invalid sandbox verdict")
         result["cases"].append({"id": case["id"], "verdict": verdict,
-                                "runtimeMs": observed.get("runtimeMs", 0), "memoryBytes": observed.get("memoryBytes", 0)})
+                                "runtimeMs": observed.get("runtimeMs", 0), "memoryBytes": observed.get("memoryBytes", 0), **diagnostic})
     passed = sum(case["verdict"] == "AC" for case in result["cases"])
     result["verdict"] = "AC" if passed == len(result["cases"]) else "PARTIAL" if passed else result["cases"][0]["verdict"]
     return result

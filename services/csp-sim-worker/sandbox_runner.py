@@ -114,7 +114,7 @@ def main():
             try:
                 result["output"] = base64.b64encode(read_file(output_name)).decode("ascii")
             except FileNotFoundError:
-                result["verdict"], result["message"] = "WA", "未生成规定的输出文件"
+                result["verdict"], result["message"] = "WA", "未生成规定的输出文件：" + output_name + "。题目配置为文件输入输出；请按题目要求读写指定文件，若代码使用cin/cout，请由教师确认是否应改用标准输入输出。"
             except (OSError, ValueError):
                 result["verdict"], result["message"] = "OLE", "输出文件超限或类型无效"
     result["environment"] = "Ubuntu 20.04 / g++ " + compiler_version + " / -O2 -std=c++14 -static"

@@ -32,6 +32,8 @@ public class CspSimController {
     @GetMapping("/students/export") public ResponseEntity<byte[]> roster(Principal p) { return download(sim.rosterCsv(owner(p)),"students.csv","text/csv;charset=UTF-8"); }
     @GetMapping("/exams") public Object exams(Principal p) { return sim.exams(owner(p)); }
     @PostMapping("/exams") public Object create(Principal p,@RequestBody CreateExam input) { return sim.createExam(owner(p),input); }
+    @PutMapping("/exams/{id}") public Object editExam(Principal p,@PathVariable String id,@RequestBody CreateExam input) { return sim.editExam(owner(p),id,input); }
+    @PostMapping("/exams/{id}/restart") public Object restart(Principal p,@PathVariable String id) { return sim.restart(owner(p),id); }
     @PostMapping("/exams/{id}/admission-numbers") public Object admissionNumbers(Principal p,@PathVariable String id) { return sim.updateAdmissionNumbers(owner(p),id); }
     @GetMapping("/exams/{id}") public Object exam(Principal p,@PathVariable String id) { return sim.teacherExam(owner(p),id); }
     @PostMapping("/exams/{id}/start") public Object start(Principal p,@PathVariable String id) { return sim.start(owner(p),id); }
@@ -39,6 +41,19 @@ public class CspSimController {
     @GetMapping("/exams/{id}/students/{studentId}/submissions") public Object submissions(Principal p,@PathVariable String id,@PathVariable String studentId) { return sim.submissions(owner(p),id,studentId); }
     @GetMapping("/exams/{id}/students/{studentId}/file") public ResponseEntity<byte[]> teacherFile(Principal p,@PathVariable String id,@PathVariable String studentId,@RequestParam(required=false) String submissionId,@RequestParam String path) { return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).cacheControl(CacheControl.noStore()).body(sim.teacherReadFile(owner(p),id,studentId,submissionId,path)); }
     @PostMapping("/exams/{id}/problems/{problemId}/data") public Object data(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam MultipartFile file,@RequestParam(defaultValue="false") boolean samples) throws IOException { return sim.uploadData(owner(p),id,problemId,file.getBytes(),samples); }
+    @PostMapping("/exams/{id}/problems/{problemId}/data-files") public Object dataFiles(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam("files") List<MultipartFile> uploads,@RequestParam(defaultValue="false") boolean samples) throws IOException {
+        List<String> names=new ArrayList<>();List<byte[]> contents=new ArrayList<>();
+        for(MultipartFile upload:uploads){names.add(upload.getOriginalFilename());contents.add(upload.getBytes());}
+        return sim.uploadDataFiles(owner(p),id,problemId,names,contents,samples);
+    }
+    @GetMapping("/exams/{id}/problems/{problemId}/data-files") public Object listData(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam(defaultValue="false") boolean samples) {return sim.dataFiles(owner(p),id,problemId,samples);}
+    @GetMapping("/exams/{id}/problems/{problemId}/data-file") public ResponseEntity<byte[]> readData(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam String caseId,@RequestParam String kind,@RequestParam(defaultValue="false") boolean samples,@RequestParam(defaultValue="false") boolean download) {
+        byte[] data=sim.readData(owner(p),id,problemId,caseId,kind,samples,download);
+        String filename=CspFiles.base(caseId)+(kind.equals("input")?".in":".out");
+        return download ? ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(filename,java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(data)
+                : ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).cacheControl(CacheControl.noStore()).body(data);
+    }
     public record GeneratedData(String jobId) {}
     @PostMapping("/exams/{id}/problems/{problemId}/generated-data") public Object generated(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestBody GeneratedData input) throws IOException {
         GenerationJob job = jobs.requireOwned(UUID.fromString(input.jobId()),users.requireByUsername(owner(p)).getId());
