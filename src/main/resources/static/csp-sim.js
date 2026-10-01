@@ -16,7 +16,7 @@
   const MOVE_TYPE = 'application/x-dataforge-csp-path';
   let draggedEntry = null;
   let workspace = null, session = null, folder = '/', selected = '', previewText = '', previewPath = '', serverOffset = 0;
-  let working = false, polling = false;
+  let working = false, polling = false, dataUploading = false;
   const dialog = $('#cspDialog');
 
   async function request(path, {method = 'GET', body, token, binary = false} = {}) {
@@ -113,15 +113,50 @@
     if (!p.cases.length) return;
     openDialog(p.name + ' · 确认测试点和分值', `<form id="dataConfigForm" data-id="${id}" data-version="${esc(p.dataVersion)}"><div class="notice">逐点计分时每行填写该测试点分值；子任务计分时，同组每行填写相同的整组分值，全部通过才获得该组分数。</div><div class="form-grid"><label>计分方式<select name="scoring"><option value="POINTS" ${p.scoring==='POINTS'?'selected':''}>每个测试点独立得分</option><option value="SUBTASKS" ${p.scoring==='SUBTASKS'?'selected':''}>子任务全部通过得分</option></select></label><label>题目满分<input value="${p.maxScore}" disabled></label></div><div class="table-scroll" style="max-height:360px"><table><thead><tr><th>数据</th><th>分值</th><th>子任务名称（可选）</th></tr></thead><tbody>${p.cases.map(c=>`<tr data-case-row data-id="${esc(c.id)}"><td>${esc(c.id)}</td><td><input class="cell-input" name="score" type="number" min="0" step="0.0001" required value="${c.score}"></td><td><input class="cell-input" name="subtask" maxlength="50" value="${esc(c.subtask)}" placeholder="例如 subtask1"></td></tr>`).join('')}</tbody></table></div><p class="form-error" role="alert"></p></form>`, '<button class="button" data-action="close-dialog">取消</button><button class="button primary" form="dataConfigForm" type="submit">确认并保存计分规则</button>');
   }
+  function uploadRequest(path, body, onProgress) {
+    return new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest(); xhr.open('POST',API+path); xhr.timeout=30*60*1000;
+      xhr.upload.addEventListener('progress',event=>onProgress(event.loaded,event.lengthComputable?event.total:0));
+      xhr.upload.addEventListener('load',()=>{
+        $('#dataUploadProgress').value=100; $('#dataUploadPercent').textContent='100%';
+        $('#dataUploadStatus').textContent='文件已传输，正在校验配对并保存…';
+      });
+      xhr.addEventListener('load',()=>{
+        let result={};try{result=JSON.parse(xhr.responseText);}catch{}
+        if(xhr.status>=200&&xhr.status<300){resolve(result);return;}
+        if(xhr.status===401)location.href='/tools.html?auth=login&next='+encodeURIComponent('/csp-sim.html');
+        reject(new Error(result.error||result.message||(xhr.status===413?'上传数据不能超过500MB；若未超限，请检查服务器上传限制':`上传失败（${xhr.status}）`)));
+      });
+      xhr.addEventListener('error',()=>reject(new Error('上传连接中断，请检查网络后重试')));
+      xhr.addEventListener('timeout',()=>reject(new Error('上传等待超时，请刷新考场确认是否已保存，再重试')));
+      xhr.addEventListener('abort',()=>reject(new Error('上传已中止')));
+      xhr.send(body);
+    });
+  }
+  dialog.addEventListener('cancel',event=>{if(dataUploading)event.preventDefault();});
   async function uploadData(id, samples) {
     chooseFile('.zip,.in,.out,.ans', async uploads => {
       if (!uploads.length) return;
-      if(uploads.reduce((n,f)=>n+f.size,0)>25*1048576)throw new Error('一次数据上传合计最多25MB');
+      if(uploads.reduce((n,f)=>n+f.size,0)>500*1048576)throw new Error('一次题目数据上传合计不能超过500MB');
       const zip=uploads.length===1 && /\.zip$/i.test(uploads[0].name);
       if(!zip && uploads.some(f=>/\.zip$/i.test(f.name)))throw new Error('请选择一个ZIP，或多选配对的.in与.out/.ans文件');
       const form = new FormData(); uploads.forEach(file=>form.append(zip?'file':'files',file));
-      currentExam = await request(`/exams/${currentExam.id}/problems/${id}/${zip?'data':'data-files'}?samples=${samples}`,{method:'POST',body:form}); renderExam();
-      toast(samples?'样例已公开给学生':'数据已导入，请确认分值'); if (!samples) dataConfigDialog(id);
+      const total=uploads.reduce((n,f)=>n+f.size,0);
+      openDialog('上传'+(samples?'公开样例':'题目数据'),`<div class="data-upload"><p>${uploads.length} 个文件 · ${bytes(total)}<br><small>单次合计最多500MB；ZIP展开后也最多500MB。</small></p><div class="upload-progress-label"><span id="dataUploadStatus" role="status">正在上传，请保持页面打开…</span><strong id="dataUploadPercent">0%</strong></div><progress id="dataUploadProgress" max="100" value="0" aria-label="题目数据上传进度"></progress><p id="dataUploadBytes" class="muted">已传输 0 B</p></div>`);
+      dataUploading=true; $('[data-action="close-dialog"]',dialog).disabled=true;
+      try {
+        currentExam=await uploadRequest(`/exams/${currentExam.id}/problems/${id}/${zip?'data':'data-files'}?samples=${samples}`,form,(loaded,size)=>{
+          const percent=size?Math.min(100,Math.floor(loaded/size*100)):0;
+          const progress=$('#dataUploadProgress');if(size)progress.value=percent;else progress.removeAttribute('value');
+          $('#dataUploadPercent').textContent=size?percent+'%':'传输中';
+          $('#dataUploadBytes').textContent='已传输 '+bytes(loaded)+(size?' / '+bytes(size):'');
+          if(size&&loaded>=size)$('#dataUploadStatus').textContent='文件已传输，正在校验配对并保存…';
+        });
+      } catch(error) {
+        openDialog('上传未完成',`<p class="form-error" role="alert">${esc(error.message)}</p><p>本次上传未确认成功，请重试；若网络中断，请先刷新考场检查数据是否已保存。</p>`,'<button class="button" data-action="close-dialog">关闭</button>');
+        throw error;
+      } finally {dataUploading=false;const close=$('[data-action="close-dialog"]',dialog);if(close)close.disabled=false;}
+      dialog.close();renderExam();toast(samples?'样例已公开给学生':'数据已导入，请确认分值');if(!samples)dataConfigDialog(id);
     }, true);
   }
   async function dataFilesDialog(problemId, samples = false) {
@@ -318,7 +353,7 @@
     if(fileRow){if(draggedEntry)return;guarded(()=>selectFile(fileRow.dataset.filePath));return;}
     const button=event.target.closest('[data-action]'); if(!button||button.disabled)return;
     const {action,id,path}=button.dataset;
-    if(action==='close-dialog'){dialog.close();return;}
+    if(action==='close-dialog'){if(!dataUploading)dialog.close();return;}
     guarded(async()=>{
       if(action==='roster'){activeView='roster';currentExam=null;await loadTeacher();}
       else if(action==='add-student')studentForm();

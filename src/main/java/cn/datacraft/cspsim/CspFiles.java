@@ -13,6 +13,7 @@ import java.util.zip.*;
 public class CspFiles {
     public static final int MAX_FILE = 2 * 1024 * 1024;
     public static final long MAX_WORKSPACE = 25L * 1024 * 1024;
+    public static final long MAX_DATA_UPLOAD = 500L * 1024 * 1024;
     private final Path root;
     public CspFiles(ArtifactStorage storage) throws IOException {
         root = storage.root().resolve("csp-sim/blobs");
@@ -22,6 +23,91 @@ public class CspFiles {
         String id = UUID.randomUUID().toString();
         try { Files.write(root.resolve(id), bytes, StandardOpenOption.CREATE_NEW); return id; }
         catch (IOException e) { throw new IllegalStateException("文件保存失败", e); }
+    }
+    @FunctionalInterface public interface InputSource { InputStream open() throws IOException; }
+    public record DataUpload(String name, long size, InputSource source) {}
+    /** Keep large teacher uploads on disk, including ZIP expansion, rather than on the Java heap. */
+    public static final class StagedData implements AutoCloseable {
+        private final Path directory;
+        final Map<String,Path> entries = new LinkedHashMap<>();
+        private StagedData(Path directory) { this.directory = directory; }
+        @Override public void close() {
+            try (var paths = Files.walk(directory)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            } catch (IOException e) { throw new IllegalStateException("临时数据清理失败",e); }
+        }
+    }
+    private StagedData stage() throws IOException {
+        return new StagedData(Files.createTempDirectory(root.getParent(),"upload-"));
+    }
+    public static void dataSize(long size) {
+        if (size < 0 || size > MAX_DATA_UPLOAD) throw new IllegalArgumentException("一次题目数据上传合计不能超过500MB");
+    }
+    private static long copyData(InputStream source, Path target, long remaining) throws IOException {
+        long size = 0; byte[] buffer = new byte[65536];
+        try (OutputStream output = Files.newOutputStream(target,StandardOpenOption.CREATE_NEW)) {
+            int count;
+            while ((count=source.read(buffer)) != -1) {
+                size += count;
+                if (size > remaining) throw new IllegalArgumentException("数据文件合计或ZIP展开后不能超过500MB");
+                output.write(buffer,0,count);
+            }
+        }
+        return size;
+    }
+    public StagedData stageFiles(List<DataUpload> uploads) {
+        if (uploads==null || uploads.isEmpty() || uploads.size()>2000) throw new IllegalArgumentException("请选择配对的.in与.out/.ans文件，最多2000个文件");
+        Set<String> names = new HashSet<>(); long declared = 0;
+        for (DataUpload upload : uploads) {
+            name(upload.name(),false);
+            if (!upload.name().endsWith(".in") && !upload.name().endsWith(".out") && !upload.name().endsWith(".ans")) throw new IllegalArgumentException("仅支持.in、.out和.ans数据文件");
+            dataSize(upload.size()); declared += upload.size(); dataSize(declared);
+            if (!names.add(upload.name())) throw new IllegalArgumentException("数据包含重名文件："+upload.name());
+        }
+        StagedData staged = null;
+        try {
+            staged=stage(); long total=0;
+            for (DataUpload upload : uploads) {
+                Path target=staged.directory.resolve(UUID.randomUUID().toString());
+                try (InputStream input=upload.source().open()) { total += copyData(input,target,MAX_DATA_UPLOAD-total); }
+                staged.entries.put(upload.name(),target);
+            }
+            return staged;
+        } catch (IOException | RuntimeException e) {
+            if (staged!=null) staged.close();
+            if (e instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException("数据文件保存失败",e);
+        }
+    }
+    public StagedData stageZip(InputStream input, long size) {
+        dataSize(size); StagedData staged=null;
+        try (ZipInputStream zip=new ZipInputStream(input)) {
+            staged=stage(); long total=0; int count=0; ZipEntry entry;
+            while ((entry=zip.getNextEntry())!=null) {
+                if (++count>2500) throw new IllegalArgumentException("数据包文件数量过多");
+                String name=entry.getName();
+                if (name.startsWith("/") || name.contains("\\") || Arrays.stream(name.split("/")).anyMatch(p->p.equals("..") || p.equals("."))) throw new IllegalArgumentException("数据包含有不安全路径");
+                if (entry.isDirectory()) continue;
+                if (staged.entries.containsKey(name)) throw new IllegalArgumentException("数据包包含重名文件");
+                Path target=staged.directory.resolve(UUID.randomUUID().toString());
+                total += copyData(zip,target,MAX_DATA_UPLOAD-total); staged.entries.put(name,target);
+            }
+            if (staged.entries.isEmpty()) throw new IllegalArgumentException("ZIP中没有文件");
+            return staged;
+        } catch (IOException | RuntimeException e) {
+            if (staged!=null) staged.close();
+            if (e instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalArgumentException("无法读取ZIP数据包",e);
+        }
+    }
+    public String put(Path staged) {
+        String id=UUID.randomUUID().toString();
+        try { Files.move(staged,root.resolve(id)); return id; }
+        catch (IOException e) { throw new IllegalStateException("数据文件保存失败",e); }
+    }
+    public Path blobPath(String id) {
+        if (id==null || !id.matches("[a-f0-9-]{36}")) throw new IllegalArgumentException("文件标识无效");
+        return root.resolve(id);
     }
     public byte[] get(String id) {
         if (id == null || !id.matches("[a-f0-9-]{36}")) throw new IllegalArgumentException("文件标识无效");

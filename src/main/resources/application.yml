@@ -21,8 +21,10 @@ spring:
     default-property-inclusion: non_null
   servlet:
     multipart:
-      max-file-size: 25MB
-      max-request-size: 26MB
+      max-file-size: 500MB
+      max-request-size: 510MB
+      file-size-threshold: 0B
+      location: ${DATAFORGE_MULTIPART_DIR:${dataforge.runtime-dir}/multipart}
 
 dataforge:
   runtime-dir: ${DATAFORGE_RUNTIME_DIR:./runtime}

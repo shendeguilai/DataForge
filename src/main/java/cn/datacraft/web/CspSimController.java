@@ -40,25 +40,24 @@ public class CspSimController {
     @PostMapping("/exams/{id}/close") public Object close(Principal p,@PathVariable String id) { return sim.close(owner(p),id); }
     @GetMapping("/exams/{id}/students/{studentId}/submissions") public Object submissions(Principal p,@PathVariable String id,@PathVariable String studentId) { return sim.submissions(owner(p),id,studentId); }
     @GetMapping("/exams/{id}/students/{studentId}/file") public ResponseEntity<byte[]> teacherFile(Principal p,@PathVariable String id,@PathVariable String studentId,@RequestParam(required=false) String submissionId,@RequestParam String path) { return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).cacheControl(CacheControl.noStore()).body(sim.teacherReadFile(owner(p),id,studentId,submissionId,path)); }
-    @PostMapping("/exams/{id}/problems/{problemId}/data") public Object data(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam MultipartFile file,@RequestParam(defaultValue="false") boolean samples) throws IOException { return sim.uploadData(owner(p),id,problemId,file.getBytes(),samples); }
+    @PostMapping("/exams/{id}/problems/{problemId}/data") public Object data(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam MultipartFile file,@RequestParam(defaultValue="false") boolean samples) throws IOException { try (var input=file.getInputStream()) {return sim.uploadDataZip(owner(p),id,problemId,input,file.getSize(),samples);} }
     @PostMapping("/exams/{id}/problems/{problemId}/data-files") public Object dataFiles(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam("files") List<MultipartFile> uploads,@RequestParam(defaultValue="false") boolean samples) throws IOException {
-        List<String> names=new ArrayList<>();List<byte[]> contents=new ArrayList<>();
-        for(MultipartFile upload:uploads){names.add(upload.getOriginalFilename());contents.add(upload.getBytes());}
-        return sim.uploadDataFiles(owner(p),id,problemId,names,contents,samples);
+        return sim.uploadDataStreams(owner(p),id,problemId,uploads.stream()
+                .map(file->new CspFiles.DataUpload(file.getOriginalFilename(),file.getSize(),file::getInputStream)).toList(),samples);
     }
     @GetMapping("/exams/{id}/problems/{problemId}/data-files") public Object listData(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam(defaultValue="false") boolean samples) {return sim.dataFiles(owner(p),id,problemId,samples);}
-    @GetMapping("/exams/{id}/problems/{problemId}/data-file") public ResponseEntity<byte[]> readData(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam String caseId,@RequestParam String kind,@RequestParam(defaultValue="false") boolean samples,@RequestParam(defaultValue="false") boolean download) {
-        byte[] data=sim.readData(owner(p),id,problemId,caseId,kind,samples,download);
+    @GetMapping("/exams/{id}/problems/{problemId}/data-file") public ResponseEntity<org.springframework.core.io.Resource> readData(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestParam String caseId,@RequestParam String kind,@RequestParam(defaultValue="false") boolean samples,@RequestParam(defaultValue="false") boolean download) throws IOException {
+        var data=sim.dataResource(owner(p),id,problemId,caseId,kind,samples,download);
         String filename=CspFiles.base(caseId)+(kind.equals("input")?".in":".out");
-        return download ? ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).cacheControl(CacheControl.noStore())
+        return download ? ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).contentLength(data.contentLength()).cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(filename,java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(data)
-                : ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).cacheControl(CacheControl.noStore()).body(data);
+                : ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).contentLength(data.contentLength()).cacheControl(CacheControl.noStore()).body(data);
     }
     public record GeneratedData(String jobId) {}
     @PostMapping("/exams/{id}/problems/{problemId}/generated-data") public Object generated(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestBody GeneratedData input) throws IOException {
         GenerationJob job = jobs.requireOwned(UUID.fromString(input.jobId()),users.requireByUsername(owner(p)).getId());
         if (!job.isDownloadReady()) throw new IllegalStateException("数据包尚未生成完成");
-        return sim.uploadData(owner(p),id,problemId,Files.readAllBytes(job.getArtifact()),false);
+        try (var stream=Files.newInputStream(job.getArtifact())) {return sim.uploadDataZip(owner(p),id,problemId,stream,Files.size(job.getArtifact()),false);}
     }
     @PutMapping("/exams/{id}/problems/{problemId}/data-config") public Object config(Principal p,@PathVariable String id,@PathVariable String problemId,@RequestBody DataConfig input) { return sim.configureData(owner(p),id,problemId,input); }
     @PostMapping("/exams/{id}/grade") public Object grade(Principal p,@PathVariable String id,@RequestBody(required=false) GradeRequest input) { return sim.grade(owner(p),id,input); }
@@ -88,6 +87,7 @@ public class CspSimController {
     @PostMapping("/student/{id}/files") public Object operation(@PathVariable String id,@RequestHeader("X-CSP-Token") String token,@RequestBody FileOperation input) { return sim.fileOperation(id,token,input); }
     @PostMapping("/student/{id}/upload") public Object upload(@PathVariable String id,@RequestHeader("X-CSP-Token") String token,@RequestParam String path,@RequestParam("files") List<MultipartFile> uploads,@RequestParam(defaultValue="false") boolean replace,@RequestParam long revision,HttpServletRequest request) throws IOException {
         String[] names=request.getParameterValues("paths");
+        if (uploads.size()>200 || uploads.stream().mapToLong(MultipartFile::getSize).sum()>CspFiles.MAX_WORKSPACE || uploads.stream().anyMatch(file->file.getSize()>CspFiles.MAX_FILE)) throw new IllegalArgumentException("学生文件最多2MB，一次最多200个文件、25MB");
         List<byte[]> bytes = new ArrayList<>(); for (MultipartFile file : uploads) bytes.add(file.getBytes()); return sim.upload(id,token,path,names == null ? List.of() : Arrays.asList(names),bytes,replace,revision);
     }
     @GetMapping("/student/{id}/file") public ResponseEntity<byte[]> file(@PathVariable String id,@RequestHeader("X-CSP-Token") String token,@RequestParam String path) { return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).cacheControl(CacheControl.noStore()).body(sim.readFile(id,token,path)); }

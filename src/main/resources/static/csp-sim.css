@@ -12,3 +12,5 @@ dialog{border:1px solid var(--csp-line);border-radius:16px;padding:0;max-width:8
 @media(max-width:500px){.csp-topbar .module-nav{display:none}}
 
 [draggable="true"]{cursor:grab}[draggable="true"]:active{cursor:grabbing}.move-dragging{opacity:.45}.move-dragover{background:#e3eeff!important;outline:2px solid #2563eb;outline-offset:-2px;border-radius:6px}
+
+.data-upload{padding:8px 0}.upload-progress-label{display:flex;justify-content:space-between;gap:16px;align-items:center;margin:20px 0 12px}.upload-progress-label strong{color:var(--csp-blue);font-variant-numeric:tabular-nums}.data-upload progress{display:block;width:100%;height:16px;border:0;border-radius:8px;overflow:hidden;accent-color:var(--csp-blue)}.data-upload progress::-webkit-progress-bar{background:#e8eef8;border-radius:8px}.data-upload progress::-webkit-progress-value{background:var(--csp-blue);border-radius:8px}.data-upload progress::-moz-progress-bar{background:var(--csp-blue);border-radius:8px}

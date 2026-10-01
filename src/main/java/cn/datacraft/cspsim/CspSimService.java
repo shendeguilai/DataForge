@@ -448,37 +448,44 @@ public class CspSimService {
 
     private Problem problem(Exam e, String id) { return e.problems.stream().filter(p -> p.id.equals(id)).findFirst().orElseThrow(() -> new NoSuchElementException("题目不存在")); }
     public Map<String,Object> uploadData(String owner, String examId, String problemId, byte[] zip, boolean samples) {
-        return importData(owner,examId,problemId,CspFiles.unzip(zip),samples);
+        return uploadDataZip(owner,examId,problemId,new ByteArrayInputStream(zip),zip.length,samples);
+    }
+    public Map<String,Object> uploadDataZip(String owner,String examId,String problemId,InputStream input,long size,boolean samples) {
+        problem(decode(owned(examId,"EXAM",owner),Exam.class),problemId);
+        try (CspFiles.StagedData staged=files.stageZip(input,size)) { return importData(owner,examId,problemId,staged,samples); }
     }
     public Map<String,Object> uploadDataFiles(String owner, String examId, String problemId, List<String> names, List<byte[]> contents, boolean samples) {
-        if (names == null || names.isEmpty() || names.size() != contents.size() || names.size() > 2000) throw new IllegalArgumentException("请选择配对的.in与.out/.ans文件，最多2000个文件");
-        Map<String,byte[]> unpacked = new LinkedHashMap<>(); long total=0;
-        for (int i=0;i<names.size();i++) {
-            String name=names.get(i); CspFiles.name(name,false);
-            if (!name.endsWith(".in") && !name.endsWith(".out") && !name.endsWith(".ans")) throw new IllegalArgumentException("仅支持.in、.out和.ans数据文件");
-            byte[] content=contents.get(i); total+=content.length;
-            if (content.length>25*1024*1024 || total>25L*1024*1024) throw new IllegalArgumentException("每个数据文件最多25MB，合计最多25MB");
-            if (unpacked.putIfAbsent(name,content)!=null) throw new IllegalArgumentException("数据包含重名文件："+name);
-        }
-        return importData(owner,examId,problemId,unpacked,samples);
+        if (names==null || contents==null || names.size()!=contents.size()) throw new IllegalArgumentException("请选择配对的.in与.out/.ans文件");
+        List<CspFiles.DataUpload> uploads=new ArrayList<>();
+        for (int i=0;i<names.size();i++) { byte[] content=contents.get(i); uploads.add(new CspFiles.DataUpload(names.get(i),content.length,()->new ByteArrayInputStream(content))); }
+        return uploadDataStreams(owner,examId,problemId,uploads,samples);
     }
-    private Map<String,Object> importData(String owner,String examId,String problemId,Map<String,byte[]> unpacked,boolean samples) {
+    public Map<String,Object> uploadDataStreams(String owner,String examId,String problemId,List<CspFiles.DataUpload> uploads,boolean samples) {
+        problem(decode(owned(examId,"EXAM",owner),Exam.class),problemId);
+        try (CspFiles.StagedData staged=files.stageFiles(uploads)) { return importData(owner,examId,problemId,staged,samples); }
+    }
+    private Map<String,Object> importData(String owner,String examId,String problemId,CspFiles.StagedData staged,boolean samples) {
         CspRecord r = owned(examId, "EXAM", owner); Exam e = decode(r, Exam.class); Problem problem = problem(e, problemId);
-        List<TestCase> cases = new ArrayList<>();
+        var unpacked=staged.entries;
         List<String> inputs = unpacked.keySet().stream().filter(n -> n.endsWith(".in")).sorted().toList();
         if (inputs.isEmpty() || inputs.size() > 1000 || samples && inputs.size() > 10) throw new IllegalArgumentException("数据包应包含1至1000组数据，样例最多10组");
+        // Validate all pairs before moving staged files into persistent blob storage.
         for (String input : inputs) {
-            String stem = input.substring(0, input.length() - 3); String out = stem + ".out", ans = stem + ".ans";
-            if (unpacked.containsKey(out) == unpacked.containsKey(ans)) throw new IllegalArgumentException("输入必须有唯一配对答案：" + input);
-            TestCase c = new TestCase(); c.id = stem; c.inputBlob = files.put(unpacked.get(input)); c.answerBlob = files.put(unpacked.get(unpacked.containsKey(out) ? out : ans)); cases.add(c);
-            if (samples && (unpacked.get(input).length > 128 * 1024 || unpacked.get(unpacked.containsKey(out) ? out : ans).length > 128 * 1024)) throw new IllegalArgumentException("样例文件不能超过128KB");
+            String stem=input.substring(0,input.length()-3), out=stem+".out", ans=stem+".ans";
+            if (unpacked.containsKey(out)==unpacked.containsKey(ans)) throw new IllegalArgumentException("输入必须有唯一配对答案："+input);
+            if (samples) try {
+                if (java.nio.file.Files.size(unpacked.get(input))>128*1024 || java.nio.file.Files.size(unpacked.get(unpacked.containsKey(out)?out:ans))>128*1024) throw new IllegalArgumentException("样例文件不能超过128KB");
+            } catch (IOException ex) { throw new IllegalStateException("数据文件无法读取",ex); }
         }
         for (String name : unpacked.keySet()) if ((name.endsWith(".out") || name.endsWith(".ans")) && !unpacked.containsKey(name.substring(0, name.lastIndexOf('.')) + ".in")) throw new IllegalArgumentException("答案没有配对输入：" + name);
-        if (samples) problem.samples = cases;
-        else {
-            problem.cases = cases; allocateScores(problem); problem.dataVersion = UUID.randomUUID().toString(); problem.dataConfirmed = false;
+        List<TestCase> cases = new ArrayList<>();
+        for (String input : inputs) {
+            String stem=input.substring(0,input.length()-3),out=stem+".out";
+            TestCase c=new TestCase(); c.id=stem; c.inputBlob=files.put(unpacked.get(input)); c.answerBlob=files.put(unpacked.get(unpacked.containsKey(out)?out:stem+".ans")); cases.add(c);
         }
-        save(r, e); return teacherExam(owner, examId);
+        if (samples) problem.samples = cases;
+        else { problem.cases=cases; allocateScores(problem); problem.dataVersion=UUID.randomUUID().toString(); problem.dataConfirmed=false; }
+        save(r,e); return teacherExam(owner,examId);
     }
     private void allocateScores(Problem p) {
         BigDecimal each=p.maxScore.divide(BigDecimal.valueOf(p.cases.size()),4,RoundingMode.DOWN),used=BigDecimal.ZERO;
@@ -490,12 +497,16 @@ public class CspSimService {
         return (samples?p.samples:p.cases).stream().map(c -> Map.<String,Object>of("id",c.id,"inputBytes",files.size(c.inputBlob),"answerBytes",files.size(c.answerBlob),"previewLimit",128*1024)).toList();
     }
     public byte[] readData(String owner,String examId,String problemId,String caseId,String kind,boolean samples,boolean download) {
+        try { return dataResource(owner,examId,problemId,caseId,kind,samples,download).getContentAsByteArray(); }
+        catch (IOException ex) { throw new IllegalStateException("数据文件无法读取",ex); }
+    }
+    public org.springframework.core.io.Resource dataResource(String owner,String examId,String problemId,String caseId,String kind,boolean samples,boolean download) {
         Exam e=decode(owned(examId,"EXAM",owner),Exam.class);Problem p=problem(e,problemId);
         TestCase c=(samples?p.samples:p.cases).stream().filter(tc->tc.id.equals(caseId)).findFirst().orElseThrow(()->new NoSuchElementException("测试点不存在"));
         if (!Set.of("input","answer").contains(kind)) throw new IllegalArgumentException("请选择输入或答案");
         String blob=kind.equals("input")?c.inputBlob:c.answerBlob;
         if (!download && files.size(blob)>128*1024) throw new IllegalArgumentException("数据较大，请下载查看");
-        return files.get(blob);
+        return new org.springframework.core.io.FileSystemResource(files.blobPath(blob));
     }
     public Map<String,Object> configureData(String owner, String examId, String problemId, DataConfig config) {
         if (config == null) throw new IllegalArgumentException("请填写数据计分配置");

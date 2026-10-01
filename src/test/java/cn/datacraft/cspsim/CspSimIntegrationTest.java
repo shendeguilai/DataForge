@@ -197,6 +197,26 @@ class CspSimIntegrationTest {
         mvc.perform(get("/api/tools/csp-sim/exams/"+f.examId+"/problems/"+f.problem.id+"/data-file").with(user("teacher"))
                 .param("caseId","big").param("kind","input").param("download","true")).andExpect(status().isOk()).andExpect(content().bytes(large));
     }
+    @Test void dataControllerUsesStreamsAndRetainsOtherUploadQuotas() throws Exception {
+        Fixture f=fixture("LINUX","TEACHING");
+        String endpoint="/api/tools/csp-sim/exams/"+f.examId+"/problems/"+f.problem.id+"/data-files";
+        MockMultipartFile streamed=new MockMultipartFile("files","1.in","text/plain","1\n".getBytes()) {
+            @Override public byte[] getBytes() {throw new AssertionError("Teacher data must not be loaded as a whole byte array");}
+            @Override public long getSize() {return 30L*1024*1024;}
+        };
+        mvc.perform(multipart(endpoint).file(streamed).file(new MockMultipartFile("files","1.out","text/plain","1\n".getBytes())).with(user("teacher"))).andExpect(status().isOk());
+        String version=((Exam)sim.teacherExam("teacher",f.examId).get("exam")).problems.get(0).dataVersion;
+        MockMultipartFile oversized=new MockMultipartFile("files","1.in","text/plain",new byte[1]) {
+            @Override public long getSize() {return CspFiles.MAX_DATA_UPLOAD+1;}
+        };
+        mvc.perform(multipart(endpoint).file(oversized).with(user("teacher"))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("500MB")));
+        assertThat(((Exam)sim.teacherExam("teacher",f.examId).get("exam")).problems.get(0).dataVersion).isEqualTo(version);
+        MockMultipartFile roster=new MockMultipartFile("file","roster.csv","text/csv",new byte[1]) {
+            @Override public long getSize() {return 26L*1024*1024;}
+            @Override public byte[] getBytes() {throw new AssertionError("Reject the size before loading an unrelated upload");}
+        };
+        mvc.perform(multipart("/api/tools/csp-sim/students/import").file(roster).with(user("teacher"))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("25MB")));
+    }
     @Test void editingKeepsDataAndOldJudgingConfigurationAndRejectsActiveExamEdits() throws Exception {
         Fixture f=fixture("LINUX","TEACHING");correctSource(f);data(f);
         CreateExam edit=new CreateExam();edit.exam=json.convertValue(sim.teacherExam("teacher",f.examId).get("exam"),Exam.class);

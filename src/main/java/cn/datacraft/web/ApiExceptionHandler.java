@@ -26,7 +26,7 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> forbidden(Exception ex) { return error(HttpStatus.FORBIDDEN, ex.getMessage()); }
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, String>> uploadTooLarge(Exception ex) {
-        return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 25MB");
+        return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件或数据合计不能超过 500MB");
     }
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<Map<String,String>> conflictingRecord(Exception ex) {
