@@ -174,7 +174,11 @@ class CspSimIntegrationTest {
         sim.retry("teacher",f.examId,batchId);Task retry=(Task)sim.claim(KEY).get("task");
         Result passed=new Result();passed.verdict="AC";passed.score=new BigDecimal("999");CaseResult cr=new CaseResult();cr.id="data/1";cr.verdict="AC";passed.cases=List.of(cr);
         sim.complete(KEY,taskId,new Complete(retry.leaseToken,passed));sim.publish("teacher",f.examId,batchId);
-        String view=json.writeValueAsString(sim.workspace(f.participantId,f.token));assertThat(view).contains("\"score\":100").doesNotContain("999");
+        // Check score fields only: random IDs and timestamps can legitimately contain "999".
+        var scores=json.valueToTree(sim.workspace(f.participantId,f.token)).findValues("score");
+        assertThat(scores).isNotEmpty()
+                .anySatisfy(score->assertThat(score.decimalValue()).isEqualByComparingTo("100"))
+                .allSatisfy(score->assertThat(score.decimalValue()).isBetween(BigDecimal.ZERO,new BigDecimal("100")));
         sim.grade("teacher",f.examId,new GradeRequest(Map.of(f.participantId,Map.of(f.problem.id,correctFolder(f)+"/sum.cpp"))));
         assertThat(json.writeValueAsString(sim.history(f.participantId,f.token))).contains("results");
     }
