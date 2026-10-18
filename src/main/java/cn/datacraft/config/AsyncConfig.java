@@ -8,6 +8,16 @@ import java.util.concurrent.Executor;
 
 @Configuration
 public class AsyncConfig {
+    @Bean(name = "homeworkExecutor")
+    public Executor homeworkExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("kedaoj-homework-");
+        executor.initialize();
+        return executor;
+    }
     @Bean(name = "jobExecutor")
     public Executor jobExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

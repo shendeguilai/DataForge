@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>作业跟踪 · DataForge</title>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/auth.css"><link rel="stylesheet" href="/kedaoj-homework.css">
+  <script src="/ui-core.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark">D</span><span>DataForge</span><small>比赛工具站</small></a>
+  <nav class="module-nav" aria-label="站点模块"><a href="/">数据工坊</a><a href="/algorithms.html">算法可视化</a><a class="active" href="/tools.html">实用工具</a></nav>
+  <div class="account-actions hidden" id="accountActions"><a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a><span class="username" id="currentUsername"></span><button class="logout-btn" id="logoutButton" type="button">退出</button></div>
+  <div class="account-actions" id="anonymousActions"><button class="ghost-btn" data-portal-auth="login" type="button">登录</button></div>
+</header>
+<main class="hw-main">
+  <div class="hw-heading"><div><div class="hw-eyebrow">KEDA OJ · HOMEWORK</div><h1>作业跟踪</h1><p class="hw-muted">按周布置，逐题查看，持续跟进补交。</p></div><div class="hw-actions"><button type="button" class="ghost-btn" id="manageStudents">管理学生</button><button type="button" class="primary-btn" id="newAssignment">＋ 新建周作业</button></div></div>
+  <nav class="hw-tabs" role="tablist" aria-label="作业管理">
+    <button type="button" role="tab" id="tab-overview" aria-selected="true" aria-controls="overview" data-tab="overview">作业总览</button>
+    <button type="button" role="tab" id="tab-students" aria-selected="false" aria-controls="students" data-tab="students">学生名单</button>
+    <button type="button" role="tab" id="tab-connection" aria-selected="false" aria-controls="connection" data-tab="connection">OJ 连接</button>
+  </nav>
+  <div id="pageError" class="error-box hidden" role="alert"></div>
+  <div id="taskStatus" class="hw-task hidden" role="status" aria-live="polite"><span id="taskMessage"></span><progress id="taskProgress" max="1" value="0"></progress></div>
+  <section id="overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="hw-toolbar"><label>班级<select id="classFilter" aria-label="筛选班级"></select></label><label>周作业<select id="assignmentFilter" aria-label="选择周作业"></select></label></div>
+    <div id="assignmentEmpty" class="panel hw-empty"><h2>从一份周作业开始</h2><p>先在“OJ 连接”中保存登录凭据，再创建班级并录入学生。</p><button type="button" class="ghost-btn" data-open-tab="connection">设置 OJ 连接</button></div>
+    <div id="assignmentBoard" class="hidden">
+      <div class="panel hw-period"><div><h2 id="assignmentTitle"></h2><p class="hw-muted" id="assignmentPeriod"></p><p class="hw-muted" id="assignmentInfo"></p></div><div class="hw-actions"><span class="hw-phase" id="assignmentPhase"></span><button type="button" class="ghost-btn" id="refreshAssignment">手动更新</button><button type="button" class="hw-link" id="editAssignment">编辑</button><button type="button" class="hw-link" id="copyAssignment">复制</button><button type="button" class="hw-link" id="archiveAssignment">归档</button></div></div>
+      <div id="assignmentIssue" class="hw-issue hidden" role="status"><div><strong>部分数据需要核验</strong><p id="assignmentIssueText"></p></div><button type="button" class="ghost-btn" id="retryFailed">只重试失败项</button></div>
+      <div class="hw-summary"><div><strong id="completedStudents">0</strong><span>人全部完成</span></div><div><strong id="completedCells">0</strong><span>题次已通过</span></div><div><strong id="unknownCells">0</strong><span>题次待核验</span></div></div>
+      <section id="changesPanel" class="hw-changes hidden" aria-label="本次更新变化"></section>
+      <div class="hw-board-actions"><button type="button" class="ghost-btn" id="incompleteReport">复制未完成清单</button><a class="ghost-btn" id="exportExcel" download="作业完成情况.xlsx">导出 Excel</a></div>
+      <div class="panel hw-board hw-completion-board"><div class="hw-board-title"><div><h2>学生完成情况</h2><p class="hw-board-hint">点击姓名看总览，点击题目看统计，点击状态看提交</p></div><select id="studentFilter" aria-label="学生完成情况筛选"><option value="all">全部学生</option><option value="incomplete">尚未全部完成</option><option value="unknown">数据待核验</option></select></div><div class="hw-table-wrap"><table id="completionTable" aria-label="学生作业完成情况"><colgroup></colgroup><thead></thead><tbody></tbody></table></div><div class="hw-legend"><span class="hw-legend-ac">● AC</span><span class="hw-legend-late">● 逾期补交</span><span class="hw-legend-attempt">● 尝试中 / 评测中</span><span>● 未见提交 / 待核验</span></div></div>
+      <section class="panel hw-detail hidden" id="problemDetail" aria-label="每题完成统计" aria-live="polite"></section>
+      <section class="panel hw-detail hidden" id="cellDetail" aria-label="题目提交依据" aria-live="polite"></section>
+      <div class="hw-footer"><span id="lastSync"></span><span id="scheduleSummary"></span></div>
+      <p class="hw-muted hw-explanation">只统计当前 OJ 账号可见记录；“待核验”不代表学生未提交。统计中保留的数据会注明上次结果。</p>
+      <details class="hw-sync-options"><summary>更新选项</summary><p class="hw-muted">日常更新优先查询新增记录，每 7 天完整核对一次。检查历史记录或 OJ 重测后的变化时，可以手动完整复核。</p><button type="button" class="ghost-btn" id="fullRefresh">完整复核历史记录</button></details>
+    </div>
+  </section>
+  <section id="students" role="tabpanel" aria-labelledby="tab-students" hidden>
+    <div class="hw-toolbar"><label>班级<select id="rosterClass" aria-label="学生名单班级"></select></label><button class="ghost-btn" id="renameClass" type="button">修改班级名称</button></div>
+    <form class="panel hw-form hw-inline-form" id="classForm"><label>新建班级<input id="className" required maxlength="80" placeholder="例如：C++ 提高班"></label><button class="primary-btn" type="submit">创建班级</button></form>
+    <form class="panel hw-form" id="rosterForm"><h2>批量添加学生</h2><p class="hw-muted">每行一位学生：姓名, OJ UID。先核对 OJ 用户名，再确认添加；每次最多 500 位。</p><label class="hw-block">学生名单<textarea id="rosterInput" rows="5" placeholder="张同学, 10766&#10;李同学, 12345" required></textarea></label><div class="hw-actions"><button class="ghost-btn" type="submit">查询并核对用户名</button><button class="primary-btn hidden" id="confirmStudents" type="button">确认添加</button></div><div id="rosterPreview" class="hw-preview" aria-live="polite"></div></form>
+    <div class="panel hw-board"><div class="hw-board-title"><h2>班级学生</h2><span class="hw-muted">名单调整仅影响之后新建的作业</span></div><div class="hw-table-wrap"><table id="rosterTable"><thead><tr><th>学生姓名</th><th>OJ UID</th><th>OJ 用户名</th><th>操作</th></tr></thead><tbody></tbody></table></div></div>
+  </section>
+  <section id="connection" role="tabpanel" aria-labelledby="tab-connection" hidden>
+    <form id="settingsForm" class="panel hw-form"><div class="hw-board-title"><div><h2>连接可达 OJ</h2><p class="hw-muted">凭据由 DataForge 后台加密保存，仅用于读取 OJ 数据。</p></div><span class="hw-phase" id="connectionState">尚未配置</span></div><div class="hw-form-grid"><label>默认题库域<input id="defaultDomain" value="system" required pattern="[A-Za-z0-9_-]{1,64}" maxlength="64"></label><label>自动更新<select id="autoUpdate"><option value="true">每天 00:00 · 北京时间</option><option value="false">仅手动更新</option></select></label><label class="hw-wide">登录 SID 或包含 sid 的 Cookie<input id="credential" type="password" autocomplete="new-password" maxlength="16384" placeholder="首次填写；留空则保留现有凭据"></label></div><p class="hw-muted" id="connectionInfo"></p><div class="hw-actions"><button type="submit" class="primary-btn">保存设置</button><button type="button" class="ghost-btn" id="verifyConnection">验证连接</button><button type="button" class="hw-link" id="clearCredential">清除凭据</button></div></form>
+  </section>
+</main>
+<section id="createDialog" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="createTitle"><form id="assignmentForm" class="auth-card hw-dialog"><button type="button" class="auth-close" data-close-dialog="createDialog" aria-label="关闭">×</button><h2 id="createTitle">新建周作业</h2><div class="hw-form-grid"><label>作业名称<input id="newTitle" required maxlength="100" placeholder="第 1 周 · 基础巩固"></label><label>班级<select id="newClass" required></select></label><label>开始时间 · 北京时间<input id="newStart" type="datetime-local" required></label><label>截止时间 · 默认 7 天后<input id="newEnd" type="datetime-local" required></label><label class="hw-wide">题库域<input id="newDomain" value="system" required maxlength="64" pattern="[A-Za-z0-9_-]{1,64}"></label><label class="hw-wide">题号 · 空格、逗号或换行分隔，最多 100 题<textarea id="newProblems" rows="3" placeholder="P0032 P0033 P0034" required></textarea></label></div><p class="hw-muted">AC 即完成。创建时保留当前学生名单；创建后点击“手动更新”读取完成情况。</p><div class="hw-actions"><button type="submit" class="primary-btn">创建作业</button><button type="button" class="ghost-btn" data-close-dialog="createDialog">取消</button></div><div id="createError" class="error-box hidden" role="alert"></div></form></section>
+<section id="editStudentDialog" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="editStudentTitle"><form id="editStudentForm" class="auth-card hw-dialog"><button type="button" class="auth-close" data-close-dialog="editStudentDialog" aria-label="关闭">×</button><h2 id="editStudentTitle">修改学生</h2><input id="editingStudentId" type="hidden"><div class="hw-form-grid"><label>学生姓名<input id="editingStudentName" required maxlength="80"></label><label>OJ UID<input id="editingStudentUid" required inputmode="numeric" pattern="[0-9]+"></label></div><p class="hw-muted">保存时会重新查询 OJ 核对身份；旧作业名单不受影响。</p><button type="submit" class="primary-btn">核对并保存</button><div id="editStudentError" class="error-box hidden" role="alert"></div></form></section>
+<section id="reportDialog" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="reportTitle"><div class="auth-card hw-dialog"><button type="button" class="auth-close" data-close-dialog="reportDialog" aria-label="关闭">×</button><h2 id="reportTitle">未完成清单</h2><p class="hw-muted">待核验数据单独列出，不作为未完成结论。可修改文字后复制。</p><label class="hw-block">清单内容<textarea id="reportText" rows="12"></textarea></label><div class="hw-actions"><button type="button" class="primary-btn" id="copyReportText">复制清单</button><button type="button" class="ghost-btn" data-close-dialog="reportDialog">关闭</button></div><p id="copyReportMessage" role="status" class="hw-muted"></p></div></section>
+<section id="studentOverviewDialog" class="auth-view hidden" role="dialog" aria-modal="true" aria-labelledby="studentOverviewTitle"><div class="auth-card hw-dialog hw-wide-dialog"><button type="button" class="auth-close" data-close-dialog="studentOverviewDialog" aria-label="关闭">×</button><h2 id="studentOverviewTitle">学生作业总览</h2><div id="studentOverviewBody"></div></div></section>
+<div id="toast" class="toast" role="alert"></div>
+<script src="/portal.js"></script><script src="/kedaoj-homework.js"></script>
+</body>
+</html>

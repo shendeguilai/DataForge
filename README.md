@@ -20,6 +20,7 @@
 - ZIP 中包含题面、标准程序、生成器、测试数据和 `manifest.json`
 - CSP Paper Studio V0.4：登录后可逐题检查 CSP 初赛 Markdown、实时编辑并导出 Word
 - CSP 复赛模拟：长期学生名单、Linux / Windows 文件桌面、规范检查、计时收卷、教师评测与成绩发布；支持测试点与子任务计分
+- 可达 OJ 作业跟踪：班级与周作业、编辑与复制、AC/补交及每题统计、学生总览、未完成清单、更新变化与 Excel 导出；支持零点自动更新、增量查询和失败重试，加密保存登录凭据。详见 [使用说明](docs/KEDAOJ_HOMEWORK.md)
 
 ## 启动
 
