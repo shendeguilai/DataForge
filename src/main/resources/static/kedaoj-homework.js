@@ -58,17 +58,13 @@
   }
   function renderBoard() {
     const a = current(); $('#assignmentEmpty').classList.toggle('hidden', !!a); $('#assignmentBoard').classList.toggle('hidden', !a);
-    $('#taskStatus').classList.toggle('hidden', !state.task && !state.lastTask?.assignmentIds?.includes(a?.id));
+    renderUpdateState(a);
     if (!a) return;
     $('#assignmentTitle').textContent = a.title;
     $('#assignmentPeriod').textContent = `${date(a.startAt)} → ${date(a.endAt)} · 北京时间`;
     $('#assignmentInfo').textContent = `${a.problems.length} 道题 · ${a.students.length} 人 · ${a.domain} 域 · AC 即完成`;
     $('#assignmentPhase').textContent = a.archived ? '已归档' : new Date(a.startAt) > new Date() ? '未开始' : new Date(a.endAt) <= new Date() ? '已截止 · 跟踪补交' : '进行中';
     $('#archiveAssignment').textContent = a.archived ? '恢复跟踪' : '归档';
-    $('#refreshAssignment').disabled = a.archived || !!state.task;
-    $('#editAssignment').disabled = a.archived || !!state.task;
-    $('#fullRefresh').disabled = a.archived || !!state.task;
-    $('#retryFailed').disabled = a.archived || !!state.task;
     $('#assignmentIssue').classList.toggle('hidden', !a.error && !a.failedCells);
     $('#assignmentIssueText').textContent = a.error || '存在查询失败项，保留上次成功结果。';
     $('#retryFailed').classList.toggle('hidden', !a.failedCells);
@@ -164,18 +160,59 @@
   async function reloadAssignments() { state.assignments = await request('/assignments'); renderAssignments(); }
   async function load() {
     const [settings, classes, assignments, task] = await Promise.all([request('/settings'), request('/classes'), request('/assignments'), request('/tasks/active')]);
-    Object.assign(state, {settings, classes, assignments}); renderSettings(); renderClasses(); if (task) watch(task);
+    Object.assign(state, {settings, classes, assignments}); renderSettings(); renderClasses();
+    if (task) watch(task);
+    else { clearTimeout(pollTimer); state.task = null; state.progressError = null; renderUpdateState(current()); }
+  }
+  function renderUpdateState(a) {
+    const pending = !!state.submitting, active = pending || !!state.task;
+    const task = state.task || (state.lastTask?.assignmentIds?.includes(a?.id) ? state.lastTask : null);
+    const panel = $('#taskStatus'); panel.classList.toggle('hidden', !a || !pending && !task);
+    for (const id of ['refreshAssignment', 'editAssignment', 'fullRefresh', 'retryFailed']) $('#' + id).disabled = !a || a.archived || active;
+    $('#refreshAssignment').textContent = pending ? '正在提交…' : state.task ? '更新中…' : '手动更新';
+    $('#refreshAssignment').setAttribute('aria-busy', String(active));
+    if (!a || !pending && !task) return;
+    const failed = !active && ['FAILED', 'PARTIAL'].includes(task?.state);
+    panel.classList.toggle('hw-update-failed', failed);
+    $('#taskSpinner').classList.toggle('hidden', !active);
+    const total = Number(task?.totalCells) || 0, done = Math.min(total, Number(task?.processedCells) || 0);
+    const percent = pending ? null : !active && task?.state === 'SUCCEEDED' ? 100 : total ? Math.min(active ? 99 : 100, Math.floor(done / total * 100)) : null;
+    const label = pending ? '正在提交更新任务' : state.progressError ? '进度连接中断，正在重连' : task.state === 'QUEUED' ? '已排队，等待开始' : task.message;
+    $('#taskMessage').textContent = label; $('#taskMessage').title = label;
+    $('#taskPercent').textContent = percent === null ? '' : `${percent}%`;
+    if (percent === null) $('#taskProgress').removeAttribute('value'); else $('#taskProgress').value = percent;
+    const elapsed = task?.startedAt ? Math.max(0, Math.floor(((task.finishedAt ? Date.parse(task.finishedAt) : Date.now()) - Date.parse(task.startedAt)) / 1000)) : 0;
+    $('#taskDetail').textContent = pending ? '正在连接后台，请稍候' : state.progressError ? '后台任务仍会继续，将自动恢复进度显示' :
+      [total ? `已处理 ${done} / ${total} 项` : active ? '正在准备核验' : '', elapsed ? `用时 ${elapsed < 60 ? elapsed + ' 秒' : Math.floor(elapsed / 60) + ' 分 ' + elapsed % 60 + ' 秒'}` : '', active ? '关闭页面也会继续' : ''].filter(Boolean).join(' · ');
   }
   function watch(task) {
     clearTimeout(pollTimer); state.lastTask = task; state.task = ['QUEUED', 'RUNNING'].includes(task.state) ? task : null;
-    $('#taskStatus').classList.remove('hidden'); $('#taskMessage').textContent = task.message;
-    $('#taskProgress').max = Math.max(1, task.total); $('#taskProgress').value = task.completed;
-    renderBoard();
+    state.progressError = null; renderUpdateState(current());
     if (!state.task) return;
-    pollTimer = setTimeout(async () => {
-      try { const next = await request('/tasks/' + task.id); await reloadAssignments(); watch(next); }
-      catch (e) { state.task = null; $('#taskMessage').textContent = '获取更新进度失败：' + e.message; renderBoard(); }
-    }, 2000);
+    pollTimer = setTimeout(() => pollTask(task), 1500);
+  }
+  async function pollTask(task) {
+    if (state.task?.id !== task.id) return;
+    try {
+      const next = await request('/tasks/' + task.id, {signal: AbortSignal.timeout(15000)});
+      if (state.task?.id !== task.id) return;
+      if (!['QUEUED', 'RUNNING'].includes(next.state) || next.completed !== task.completed) await reloadAssignments();
+      watch(next);
+    } catch (e) {
+      if (state.task?.id !== task.id) return;
+      state.progressError = e.message; renderUpdateState(current());
+      pollTimer = setTimeout(() => pollTask(task), 3000);
+    }
+  }
+  async function startUpdate(suffix) {
+    if (state.submitting || state.task) return;
+    const id = state.assignmentId; state.submitting = id; state.progressError = null; renderUpdateState(current());
+    try { watch(await request('/assignments/' + id + suffix, {method: 'POST', signal: AbortSignal.timeout(15000)})); }
+    catch (e) {
+      // A lost POST response does not imply that the persisted job failed to start.
+      try { const task = await request('/tasks/active', {signal: AbortSignal.timeout(15000)}); if (task?.assignmentIds.includes(id)) { watch(task); return; } } catch (_) {}
+      throw e;
+    } finally { state.submitting = null; renderUpdateState(current()); }
   }
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
   document.querySelectorAll('[data-open-tab]').forEach(b => b.onclick = () => tab(b.dataset.openTab));
@@ -275,9 +312,9 @@
     state.classId = button.dataset.jumpClass; state.assignmentId = button.dataset.jumpAssignment; state.selected = null; state.selectedProblem = null;
     ui.closeDialog($('#studentOverviewDialog')); renderClasses(); tab('overview');
   };
-  $('#retryFailed').onclick = action(async () => watch(await request('/assignments/' + state.assignmentId + '/retry-failed', {method: 'POST'})));
-  $('#fullRefresh').onclick = action(async () => watch(await request('/assignments/' + state.assignmentId + '/refresh?full=true', {method: 'POST'})));
-  $('#refreshAssignment').onclick = action(async () => { const task = await request('/assignments/' + state.assignmentId + '/refresh', {method: 'POST'}); watch(task); });
+  $('#retryFailed').onclick = action(() => startUpdate('/retry-failed'));
+  $('#fullRefresh').onclick = action(() => startUpdate('/refresh?full=true'));
+  $('#refreshAssignment').onclick = action(() => startUpdate('/refresh'));
   $('#archiveAssignment').onclick = action(async () => { const a = current(); if (!a.archived && !window.confirm('归档后保留当前结果，并停止更新这份作业。')) return; await request('/assignments/' + a.id + (a.archived ? '/restore' : '/archive'), {method: 'POST'}); await reloadAssignments(); });
   window.addEventListener('dataforge:auth-changed', () => load().catch(e => error(e.message)));
   load().catch(e => error(e.message));

@@ -327,9 +327,13 @@ public class HomeworkService {
                 for (String id : ids) {
                     var a = assignment(owner, id); if (a.archived()) continue;
                     boolean added = task.assignmentIds.add(id);
+                    boolean wasRetryOnly = task.retryOnlyIds.contains(id);
                     if (retryOnly && added) task.retryOnlyIds.add(id);
                     if (!retryOnly) task.retryOnlyIds.remove(id);
                     if (fullScan) { task.fullScanIds.add(id); task.retryOnlyIds.remove(id); }
+                    int allCells = a.students().size() * a.problems().size();
+                    if (added) task.totalCells += retryOnly && !fullScan ? a.failedCells() : allCells;
+                    else if (wasRetryOnly && !task.retryOnlyIds.contains(id)) task.totalCells += allCells - a.failedCells();
                 }
                 task.total = task.assignmentIds.size(); write(r, task); return taskView(r, task);
             });
@@ -340,7 +344,8 @@ public class HomeworkService {
         return repository.findByActiveKey("sync:" + owner).map(r -> taskView(r, read(r, SyncTask.class))).orElse(null);
     }
     private TaskView taskView(HomeworkRecord r, SyncTask t) {
-        return new TaskView(r.id, r.state, t.completed, t.total, t.message, t.startedAt, t.finishedAt, new ArrayList<>(t.assignmentIds), t.checkedCells, t.failedCells);
+        return new TaskView(r.id, r.state, t.completed, t.total, t.message, t.startedAt, t.finishedAt,
+                new ArrayList<>(t.assignmentIds), t.checkedCells, t.failedCells, t.processedCells, t.totalCells);
     }
     @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Shanghai")
     public void nightlyUpdate() {
@@ -368,6 +373,14 @@ public class HomeworkService {
     }
     private void heartbeat(String id, String token) {
         tx.executeWithoutResult(t -> { var r = leased(id, token); r.leaseUntil = now().plusSeconds(120); repository.saveAndFlush(r); });
+    }
+    private void progress(String id, String token, String message, boolean completedCell) {
+        tx.executeWithoutResult(t -> {
+            var r = leased(id, token); var task = read(r, SyncTask.class);
+            task.message = message;
+            if (completedCell) task.processedCells++;
+            r.leaseUntil = now().plusSeconds(120); write(r, task);
+        });
     }
     private record PairResult(List<Submission> records, String error, boolean full) {}
     private PairResult fetchPair(String owner, Settings config, String session, Assignment a, Student student,
@@ -406,8 +419,13 @@ public class HomeworkService {
         String owner = tx.execute(t -> {
             var r = repository.lock(id).orElseThrow();
             if (!r.state.equals("QUEUED") && !(r.state.equals("RUNNING") && (r.leaseUntil == null || !r.leaseUntil.isAfter(now())))) return null;
-            var task = read(r, SyncTask.class); task.leaseToken = token; task.startedAt = now(); task.message = "正在查询 OJ";
+            var task = read(r, SyncTask.class); task.leaseToken = token; task.startedAt = now(); task.message = "正在验证 OJ 身份";
             task.processedIds.clear(); task.completed = 0; task.checkedCells = 0; task.failedCells = 0;
+            task.processedCells = 0; task.totalCells = 0;
+            for (String aid : task.assignmentIds) {
+                var a = assignment(r.owner, aid);
+                if (!a.archived()) task.totalCells += task.retryOnlyIds.contains(aid) ? a.failedCells() : a.students().size() * a.problems().size();
+            }
             r.state = "RUNNING"; r.leaseUntil = now().plusSeconds(120); write(r, task); return r.owner;
         });
         if (owner == null) return;
@@ -447,15 +465,19 @@ public class HomeworkService {
                         String cell = cellKey(student.uid(), problem.docId()); Cell prior = a.cells.get(cell);
                         if (retryOnly && !(prior != null && HomeworkReports.unknown(prior) && prior.error != null)) continue;
                         targets.add(cell); String pair = a.domain + ":" + cell;
-                        if (fetched.containsKey(pair) && (!forceFull || fetched.get(pair).full || fetched.get(pair).error != null)) continue;
-                        String blocked = fatal != null ? fatal : domainErrors.get(a.domain);
-                        if (blocked != null) { fetched.put(pair, new PairResult(null, blocked, false)); continue; }
-                        try { fetched.put(pair, fetchPair(owner, config, session, a, student, problem, forceFull, id, token)); }
-                        catch (KedaojException e) {
-                            String message = e.code() + "：" + e.getMessage(); fetched.put(pair, new PairResult(null, message, false));
-                            if (stopBatch(e)) fatal = message;
-                            if (e.code().equals("AUTH_REQUIRED")) authFailed = true;
+                        String label = "正在核验 " + student.name() + " · " + problem.pid();
+                        progress(id, token, label, false);
+                        if (!(fetched.containsKey(pair) && (!forceFull || fetched.get(pair).full || fetched.get(pair).error != null))) {
+                            String blocked = fatal != null ? fatal : domainErrors.get(a.domain);
+                            if (blocked != null) fetched.put(pair, new PairResult(null, blocked, false));
+                            else try { fetched.put(pair, fetchPair(owner, config, session, a, student, problem, forceFull, id, token)); }
+                            catch (KedaojException e) {
+                                String message = e.code() + "：" + e.getMessage(); fetched.put(pair, new PairResult(null, message, false));
+                                if (stopBatch(e)) fatal = message;
+                                if (e.code().equals("AUTH_REQUIRED")) authFailed = true;
+                            }
                         }
+                        progress(id, token, "正在整理 " + student.name() + " · " + problem.pid() + " 的查询结果", true);
                     }
                 }
                 tx.executeWithoutResult(t -> {
@@ -503,6 +525,7 @@ public class HomeworkService {
                     }
                     a.attemptedAt = now(); a.error = message; write(ar, a);
                 }
+                task.processedCells = Math.max(task.processedCells, task.checkedCells);
                 task.finishedAt = now(); task.message = message; r.state = "FAILED"; r.activeKey = null; r.leaseUntil = null; write(r, task);
             });
         }

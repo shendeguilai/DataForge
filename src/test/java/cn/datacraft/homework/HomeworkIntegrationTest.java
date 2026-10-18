@@ -174,6 +174,29 @@ class HomeworkIntegrationTest {
         verify(oj, times(1)).records(eq(owner), anyString(), anyString(), eq(42L), eq(32L), any());
         assertThatThrownBy(() -> service.refresh(owner, a.id(), false, true)).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void exposesDurableProgressBeforeEachQueryAndDoesNotDoubleCountRepeatedClicks() {
+        when(oj.problem(anyString(), anyString(), anyString(), eq("P0033"))).thenReturn(new Problem("P0033", 33, "新题"));
+        var original = assignment();
+        var a = service.editAssignment(owner, original.id(), new CreateAssignment(original.classId(), "进度验证", "system", original.startAt(), original.endAt(), List.of("P0032", "P0033")), 0);
+        var task = service.refresh(owner, a.id());
+        assertThat(task.totalCells()).isEqualTo(2); assertThat(task.processedCells()).isZero();
+        var duplicate = service.refresh(owner, a.id());
+        assertThat(duplicate.id()).isEqualTo(task.id()); assertThat(duplicate.totalCells()).isEqualTo(2);
+        when(oj.records(eq(owner), anyString(), anyString(), anyLong(), anyLong(), any())).thenAnswer(invocation -> {
+            long doc = invocation.getArgument(4);
+            // Observe through a separate service, as a browser polling the persisted task would.
+            var reader = new HomeworkService(repository, json, cipher, oj, manager, Runnable::run, Clock.systemUTC(), false);
+            var running = reader.task(owner, task.id());
+            assertThat(running.state()).isEqualTo("RUNNING"); assertThat(running.totalCells()).isEqualTo(2);
+            assertThat(running.processedCells()).isEqualTo(doc == 32 ? 0 : 1);
+            assertThat(running.message()).contains("小明", doc == 32 ? "P0032" : "P0033");
+            return List.of();
+        });
+        service.dispatch();
+        var finished = service.task(owner, task.id());
+        assertThat(finished.state()).isEqualTo("SUCCEEDED"); assertThat(finished.processedCells()).isEqualTo(2);
+        assertThat(finished.checkedCells()).isEqualTo(2); assertThat(finished.totalCells()).isEqualTo(2);
+    }
     @Test void tracksNewCompletionsAndChangedRejudgeResultsWithoutCallingFirstLoadNewWork() {
         var a = assignment(); service.refresh(owner, a.id()); service.dispatch();
         assertThat(service.assignment(owner, a.id()).lastChange().initial).isTrue();

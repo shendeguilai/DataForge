@@ -24,7 +24,8 @@ public final class HomeworkTypes {
                                  int unknownCells, List<ProblemStats> problemStats, ChangeSummary lastChange,
                                  long revision, int failedCells) {}
     public record TaskView(String id, String state, int completed, int total, String message,
-                           Instant startedAt, Instant finishedAt, List<String> assignmentIds, int checkedCells, int failedCells) {}
+                           Instant startedAt, Instant finishedAt, List<String> assignmentIds, int checkedCells, int failedCells,
+                           int processedCells, int totalCells) {}
     public record ProblemStats(long docId, String pid, String title, int total, int completed, int onTime,
                                int late, int attempted, int pending, int empty, int unknown) {}
     public record IncompleteReport(String text, int incompleteStudents, int unknownStudents) {}
@@ -91,6 +92,7 @@ public final class HomeworkTypes {
         public Set<String> processedIds = new LinkedHashSet<>();
         public int completed, total;
         public int checkedCells, failedCells;
+        public int processedCells, totalCells;
         public Set<String> retryOnlyIds = new LinkedHashSet<>();
         public Set<String> fullScanIds = new LinkedHashSet<>();
         public String message = "等待更新", leaseToken;

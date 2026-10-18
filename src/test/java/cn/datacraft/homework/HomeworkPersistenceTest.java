@@ -40,7 +40,8 @@ class HomeworkPersistenceTest {
         }
         try (var second = new SpringApplicationBuilder(DataForgeApplication.class).web(WebApplicationType.NONE).run(args)) {
             var s = service(second, oj); assertThat(s.settings("teacher").configured()).isTrue();
-            assertThat(s.task("teacher", taskId).state()).isEqualTo("QUEUED"); s.dispatch();
+            assertThat(s.task("teacher", taskId).state()).isEqualTo("QUEUED");
+            assertThat(s.task("teacher", taskId).totalCells()).isEqualTo(1); s.dispatch();
             assertThat(s.assignment("teacher", assignmentId).completedStudents()).isEqualTo(1);
             s.archive("teacher", assignmentId, true);
         }
@@ -48,6 +49,7 @@ class HomeworkPersistenceTest {
             var s = service(third, oj); var a = s.assignment("teacher", assignmentId);
             assertThat(a.archived()).isTrue(); assertThat(a.cells().get("42:32").status).isEqualTo("AC");
             assertThat(s.task("teacher", taskId).state()).isEqualTo("SUCCEEDED");
+            assertThat(s.task("teacher", taskId).processedCells()).isEqualTo(1);
         }
     }
 }
