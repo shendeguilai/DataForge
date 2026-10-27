@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/portal.css">
     <link rel="stylesheet" href="/auth.css">
+    <link rel="stylesheet" href="/workbench.css">
     <script src="/ui-core.js"></script>
 </head>
 <body>
@@ -18,7 +19,7 @@
         <small>比赛工具站</small>
     </a>
     <nav class="module-nav" aria-label="站点模块">
-        <a href="/">数据工坊</a>
+
         <a href="/algorithms.html">算法可视化</a>
         <a class="active" href="/tools.html">实用工具</a>
     </nav>
@@ -36,12 +37,24 @@
 <main class="portal-main">
     <section class="portal-hero">
         <div class="eyebrow"><span></span> TOOLBOX</div>
-        <h1>实用工具，<br><em>慢慢变多。</em></h1>
-        <p>这个模块会收纳你之后需要的小工具：比赛账号统计、用户名批量处理、格式转换、数据检查等。第一版先把目录搭好，后续逐个接入。</p>
+        <h1>教学与比赛，<br><em>从这里开始。</em></h1>
+        <p>查看今天的教学待办，管理班级与考试，或选择一个竞赛工具。</p>
+    </section>
+
+    <section id="teacherWorkbench" class="panel workbench hidden" aria-label="教师工作台">
+        <div class="workbench-heading"><h2>教师工作台</h2><button type="button" class="ghost-btn" id="refreshWorkbench">刷新工作台</button></div>
+        <p id="workbenchError" role="status"></p><div id="workbenchSummary" class="workbench-summary"></div>
+        <div id="workbenchTasks" class="workbench-columns"></div>
+        <details id="learningSection"><summary>学生学习档案 · 最近四周</summary><div id="learningBody"></div></details>
+    </section>
+
+    <section id="generatorTool" class="panel workbench hidden" aria-label="算法数据工坊">
+        <div class="workbench-heading"><h2>算法数据工坊</h2><button type="button" class="ghost-btn" id="closeGenerator">收起数据工坊</button></div>
+        <iframe id="generatorFrame" title="算法数据工坊" loading="lazy"></iframe>
     </section>
 
     <section class="portal-grid" aria-label="实用工具列表">
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="homework">
             <div class="portal-visual tool-visual" aria-hidden="true"><div class="tool-icon">AC</div></div>
             <div class="portal-card-body">
                 <span class="soon-badge">已接入 · 每日更新</span>
@@ -50,7 +63,7 @@
                 <button class="primary-btn" type="button" data-auth-required-href="/kedaoj-homework.html" data-auth-hint="登录后管理班级、周作业和可达 OJ 连接。"><span>打开作业跟踪</span><b>→</b></button>
             </div>
         </article>
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="csp-sim">
             <div class="portal-visual tool-visual" aria-hidden="true"><div class="tool-icon">CSP</div></div>
             <div class="portal-card-body">
                 <span class="soon-badge">已接入 · 教师与学生</span>
@@ -60,7 +73,7 @@
                 <a class="portal-student-link" href="/csp-sim-student.html">学生进入桌面</a>
             </div>
         </article>
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="atcoder">
             <div class="portal-visual tool-visual" aria-hidden="true">
                 <div class="tool-icon">At</div>
             </div>
@@ -72,7 +85,7 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="leaderboard">
             <div class="portal-visual leaderboard-visual" aria-hidden="true">
                 <div class="leaderboard-preview-head"><span>LIVE</span><b>ABC</b></div>
                 <div class="leaderboard-preview-row"><strong>1</strong><span></span><i>600</i></div>
@@ -87,7 +100,7 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="typing">
             <div class="portal-visual typing-visual" aria-hidden="true">
                 <div class="tool-icon">PK</div>
                 <span class="typing-key key-one">A</span>
@@ -102,7 +115,7 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="quiz">
             <div class="portal-visual quiz-visual" aria-hidden="true">
                 <div class="quiz-preview-card"><span>J006</span><strong>?</strong></div>
                 <div class="quiz-preview-buzzer">抢</div>
@@ -117,7 +130,7 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="paper">
             <div class="portal-visual paper-studio-visual" aria-hidden="true">
                 <div class="paper-studio-sheet"><i></i><i></i><i></i><span>MD</span></div>
                 <div class="paper-studio-arrow">→</div>
@@ -131,7 +144,12 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="data-generator">
+            <div class="portal-visual tool-visual" aria-hidden="true"><div class="tool-icon">IN</div></div>
+            <div class="portal-card-body"><span class="soon-badge">已接入</span><h2>算法数据工坊</h2><p>根据题面与标准程序生成测试数据，校验约束、对拍并下载数据包。</p>
+            <button class="primary-btn" type="button" id="openGenerator"><span>生成测试数据</span><b>→</b></button></div>
+        </article>
+        <article class="panel portal-card" data-tool-id="username">
             <div class="portal-visual tool-visual" aria-hidden="true">
                 <div class="tool-icon">ID</div>
             </div>
@@ -143,7 +161,7 @@
             </div>
         </article>
 
-        <article class="panel portal-card">
+        <article class="panel portal-card" data-tool-id="more">
             <div class="portal-visual tool-visual" aria-hidden="true">
                 <div class="tool-icon">Σ</div>
             </div>
@@ -160,5 +178,6 @@
 <footer><span>DataForge / Toolbox</span><span>把重复的小活儿，变成顺手的工具。</span></footer>
 <div id="toast" class="toast" role="alert"></div>
 <script src="/portal.js"></script>
+<script src="/workbench.js"></script>
 </body>
 </html>

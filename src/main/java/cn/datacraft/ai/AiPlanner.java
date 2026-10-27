@@ -154,7 +154,7 @@ public class AiPlanner {
                 new DataPlan.PlanGroup((smallEnd + 1) + "-" + randomEnd, "随机与特殊排列"),
                 new DataPlan.PlanGroup((randomEnd + 1) + "-" + count, "较大规模压力数据")
         ));
-        plan.setGeneratorCode("#include <bits/stdc++.h>\nusing namespace std;\nint main(int argc,char**argv){\n"
+        plan.setGeneratorCode("#include <iostream>\n#include <random>\n#include <string>\nusing namespace std;\nint main(int argc,char**argv){\n"
                 + "  long long seed=argc>1?stoll(argv[1]):1; int tc=argc>2?stoi(argv[2]):1;\n"
                 + "  mt19937_64 rng(seed); int n=tc<=2?tc:(tc%5==0?10000:20+int(rng()%200));\n"
                 + "  cout<<n<<'\\n'; for(int i=0;i<n;i++){ long long x=(tc%4==0?i+1:static_cast<long long>(rng()%1000000)); cout<<x<<(i+1==n?'\\n':' ');}\n}\n");

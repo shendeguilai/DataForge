@@ -8,7 +8,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,16 +24,20 @@ public class SecurityConfig {
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/auth/login", "/api/auth/register",
+                        "/api/tools/csp-sim/student/**", "/api/tools/csp-sim/join/**", "/api/tools/csp-sim/worker/**"))
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/", "/index.html", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html", "/csp-paper-studio.html",
+                .requestMatchers("/", "/index.html", "/data-generator.html", "/workbench.js", "/workbench.css", "/algorithms.html", "/hanoi.html", "/fenwick.html", "/tools.html", "/csp-paper-studio.html",
                         "/atcoder.html", "/atcoder-leaderboard.html", "/atcoder-problems.html", "/typing-pk.html", "/quiz-join.html",
                         "/styles.css", "/portal.css", "/hanoi.css", "/fenwick.css", "/atcoder.css", "/atcoder-leaderboard.css", "/atcoder-problems.css", "/typing-pk.css", "/quiz.css",
                         "/auth.css", "/csp-paper-studio.css", "/csp-paper-studio-template.md", "/kedaoj-homework.css", "/kedaoj-homework.js",
                         "/ui-core.js", "/app.js", "/portal.js", "/hanoi.js", "/fenwick.js", "/atcoder.js", "/atcoder-leaderboard.js", "/atcoder-problems.js", "/typing-pk.js", "/quiz-common.js", "/quiz-join.js", "/quiz-buzzer.js", "/csp-paper-studio.js",
                         "/quiz-cards/**", "/webjars/**", "/error", "/api/tools/atcoder/**", "/ws/tools/typing", "/ws/tools/quiz",
                         "/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers(HttpMethod.GET,"/api/tools/catalog").permitAll()
+                .requestMatchers("/api/auth/csrf").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                 .requestMatchers("/csp-sim-student.html", "/csp-sim.css", "/csp-sim.js",
                         "/api/tools/csp-sim/join/**", "/api/tools/csp-sim/student/**", "/api/tools/csp-sim/worker/**").permitAll()
@@ -60,7 +63,10 @@ public class SecurityConfig {
                                 response.sendError(401);
                             }
                         })
-                        .accessDeniedHandler((request, response, ex) -> response.sendError(403)));
+                        .accessDeniedHandler((request, response, ex) -> {
+                            if(ex instanceof org.springframework.security.web.csrf.CsrfException)response.setHeader("X-DataForge-CSRF", "required");
+                            response.sendError(403);
+                        }));
         return http.build();
     }
 

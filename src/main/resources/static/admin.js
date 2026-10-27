@@ -110,7 +110,7 @@ function bind() {
 
 function switchPanel(name) {
   document.querySelectorAll('[data-panel]').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
-  ['users','ai','articles','leaderboard','jobs'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
+  ['users','ai','articles','leaderboard','jobs','tools','storage'].forEach(n => $a(`#${n}Panel`).classList.toggle('hidden', n !== name));
 }
 
 async function loadUsers() {

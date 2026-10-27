@@ -19,10 +19,10 @@ public class AsyncConfig {
         return executor;
     }
     @Bean(name = "jobExecutor")
-    public Executor jobExecutor() {
+    public Executor jobExecutor(@org.springframework.beans.factory.annotation.Value("${dataforge.generation.concurrency:1}")int concurrency) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
+        executor.setCorePoolSize(Math.max(1,Math.min(4,concurrency)));
+        executor.setMaxPoolSize(Math.max(1,Math.min(4,concurrency)));
         executor.setQueueCapacity(30);
         executor.setThreadNamePrefix("data-job-");
         executor.initialize();

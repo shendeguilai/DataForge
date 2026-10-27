@@ -113,9 +113,11 @@
     if (!p.cases.length) return;
     openDialog(p.name + ' · 确认测试点和分值', `<form id="dataConfigForm" data-id="${id}" data-version="${esc(p.dataVersion)}"><div class="notice">逐点计分时每行填写该测试点分值；子任务计分时，同组每行填写相同的整组分值，全部通过才获得该组分数。</div><div class="form-grid"><label>计分方式<select name="scoring"><option value="POINTS" ${p.scoring==='POINTS'?'selected':''}>每个测试点独立得分</option><option value="SUBTASKS" ${p.scoring==='SUBTASKS'?'selected':''}>子任务全部通过得分</option></select></label><label>题目满分<input value="${p.maxScore}" disabled></label></div><div class="table-scroll" style="max-height:360px"><table><thead><tr><th>数据</th><th>分值</th><th>子任务名称（可选）</th></tr></thead><tbody>${p.cases.map(c=>`<tr data-case-row data-id="${esc(c.id)}"><td>${esc(c.id)}</td><td><input class="cell-input" name="score" type="number" min="0" step="0.0001" required value="${c.score}"></td><td><input class="cell-input" name="subtask" maxlength="50" value="${esc(c.subtask)}" placeholder="例如 subtask1"></td></tr>`).join('')}</tbody></table></div><p class="form-error" role="alert"></p></form>`, '<button class="button" data-action="close-dialog">取消</button><button class="button primary" form="dataConfigForm" type="submit">确认并保存计分规则</button>');
   }
-  function uploadRequest(path, body, onProgress) {
+  async function uploadRequest(path, body, onProgress) {
+    const csrf=await window.DataForgeAuth.csrf(true);
     return new Promise((resolve,reject)=>{
       const xhr=new XMLHttpRequest(); xhr.open('POST',API+path); xhr.timeout=30*60*1000;
+      xhr.setRequestHeader(csrf.headerName,csrf.token);
       xhr.upload.addEventListener('progress',event=>onProgress(event.loaded,event.lengthComputable?event.total:0));
       xhr.upload.addEventListener('load',()=>{
         $('#dataUploadProgress').value=100; $('#dataUploadPercent').textContent='100%';
@@ -441,7 +443,7 @@
     });
   });
   async function initialize() {
-    if(teacher){await loadTeacher();return;}
+    if(teacher){await loadTeacher();const id=new URLSearchParams(location.search).get('exam');if(id){currentExam=await request('/exams/'+encodeURIComponent(id));activeView='exam';renderSidebar();renderExam();}return;}
     const reference=new URLSearchParams(location.search).get('exam')||'';
     const last=reference?null:storedSession('dataforge-csp-last-session');
     let examCode=reference||last?.examCode||'';

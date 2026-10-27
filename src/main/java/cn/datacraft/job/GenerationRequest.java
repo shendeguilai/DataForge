@@ -15,6 +15,12 @@ public class GenerationRequest {
     @Min(1) @Max(100)
     private int caseCount = 10;
     private String cppStandard = "c++17";
+    @Size(max=100000) private String validatorCode;
+    @Size(max=100000) private String bruteCode;
+    public String getValidatorCode(){return validatorCode;}
+    public void setValidatorCode(String code){validatorCode=code;}
+    public String getBruteCode(){return bruteCode;}
+    public void setBruteCode(String code){bruteCode=code;}
 
     public String getStatement() { return statement; }
     public void setStatement(String statement) { this.statement = statement; }

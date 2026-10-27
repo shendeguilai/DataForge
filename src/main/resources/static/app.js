@@ -12,19 +12,20 @@ if (returnedFromAdmin) {
   history.replaceState(history.state, '', `${navigationUrl.pathname}${navigationUrl.search}${navigationUrl.hash}`);
 }
 const state = {
-  jobId: localStorage.getItem('dataforge.activeJob'),
+  jobId: new URLSearchParams(location.search).get('job') || localStorage.getItem('dataforge.activeJob'),
   pollTimer: null,
   pollGeneration: 0,
   requestToken: 0,
   recentToken: 0,
   user: null,
+  authUnavailable: false,
   progressDismissed: false,
   suppressAutoResume: returnedFromAdmin
 };
 
 const examples = {
   statement: `# 数列求和\n\n给定一个长度为 n 的非负整数序列，请计算所有元素之和。\n\n## 输入格式\n第一行一个整数 n。\n第二行包含 n 个非负整数。\n\n## 输出格式\n输出序列中所有元素之和。\n\n## 数据范围\n1 ≤ n ≤ 100000，0 ≤ aᵢ ≤ 10⁹。`,
-  code: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n;\n    if (!(cin >> n)) return 0;\n    long long answer = 0, value;\n    while (n--) {\n        cin >> value;\n        answer += value;\n    }\n    cout << answer << '\\n';\n    return 0;\n}`,
+  code: `#include <iostream>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n;\n    if (!(cin >> n)) return 0;\n    long long answer = 0, value;\n    while (n--) {\n        cin >> value;\n        answer += value;\n    }\n    cout << answer << '\\n';\n    return 0;\n}`,
   requirements: `无额外要求，请按照题面约束自动设计完整测试数据。`
 };
 
@@ -36,8 +37,12 @@ async function boot() {
   try {
     const user = await api('/api/auth/me', {}, {silentAuth: true});
     enterApp(user);
-  } catch (_) {
-    enterAnonymous();
+  } catch (error) {
+    if (error.status === 401) enterAnonymous();
+    else {
+      state.authUnavailable = true;
+      UI.toast('暂时无法确认登录状态，请检查网络后刷新重试。', {variant: 'error'});
+    }
   }
 }
 
@@ -50,6 +55,16 @@ function bindEvents() {
   $('#closeProgressView')?.addEventListener('click', closeProgressView);
   $('#confirmButton')?.addEventListener('click', confirmJob);
   $('#retryPlanButton')?.addEventListener('click', retryPlan);
+  $('#cancelGenerationButton')?.addEventListener('click', () => generationAction('cancel'));
+  $('#retryGenerationButton')?.addEventListener('click', () => generationAction('retry-generation'));
+  $('#qualityReportButton')?.addEventListener('click', async () => {
+    try {
+      const report=await api(`/api/jobs/${encodeURIComponent(state.jobId)}/report`);
+      const q=report.quality||{};
+      $('#qualityReport').textContent=`输入校验：${q.validatorConfigured?'全部通过':'未配置，未校验'}\n小数据对拍：${q.bruteConfigured?`${q.comparedCases} 组通过`:'未配置，未对拍'}\n重复输入：${q.duplicateInputs??'无历史记录'}\n${q.note||'历史数据包'}\n\n`+report.cases.map(c=>`第${c.id}组 · seed ${c.seed} · 输入 ${c.inputBytes} 字节 · 标准程序 ${c.runtimeMs}ms · 对拍 ${c.comparison==='PASSED'?'通过':c.comparison==='SKIPPED_LARGE_INPUT'?'输入较大，未对拍':'未配置'}`).join('\n');
+      $('#qualityReport').classList.remove('hidden');
+    }catch(error){UI.toast(error.message,{variant:'error'});}
+  });
   $('#newTaskButton')?.addEventListener('click', resetTask);
   $('#refreshJobs')?.addEventListener('click', loadRecent);
   $('#historyButton')?.addEventListener('click', () => $('.recent-panel')?.scrollIntoView({behavior: 'smooth'}));
@@ -116,6 +131,7 @@ async function submitAuth(url, payload, submitButton) {
 
 function enterApp(user) {
   state.user = user;
+  state.authUnavailable = false;
   hideAuth();
   $('#accountActions')?.classList.remove('hidden');
   $('#anonymousActions')?.classList.add('hidden');
@@ -219,6 +235,7 @@ function changeCount(delta) {
 
 async function submitRequest(event) {
   event.preventDefault();
+  if (state.authUnavailable) {UI.toast('暂时无法确认登录状态，请检查网络后刷新重试。', {variant:'error'});return;}
   if (!state.user) {
     showAuth('login', '请先登录或注册后再生成数据。', event.submitter);
     return;
@@ -236,7 +253,9 @@ async function submitRequest(event) {
         standardCode: $('#standardCode').value,
         requirements: $('#requirements').value,
         caseCount: Number($('#caseCount').value),
-        cppStandard: $('#cppStandard').value
+        cppStandard: $('#cppStandard').value,
+        validatorCode: $('#validatorCode').value,
+        bruteCode: $('#bruteCode').value
       })
     });
     if (token !== state.requestToken) return;
@@ -421,6 +440,10 @@ function openProgress(job) {
   $('#errorBox')?.classList.add('hidden');
   $('#downloadButton')?.classList.add('hidden');
   $('#retryPlanButton')?.classList.add('hidden');
+  $('#qualityReport').classList.add('hidden');
+  $('#qualityReportButton').classList.toggle('hidden',job.status!=='COMPLETED');
+  $('#retryGenerationButton').classList.toggle('hidden',!['FAILED','CANCELLED'].includes(job.status)||!job.plan);
+  $('#cancelGenerationButton').classList.toggle('hidden',isTerminal(job.status));
   $('#retryPlanButton').disabled = false;
   $('#retryPlanButton').querySelector('span').textContent = '根据错误重新生成方案';
   $('#newTaskButton')?.classList.add('hidden');
@@ -439,11 +462,11 @@ function openProgress(job) {
     download.href = `/api/jobs/${encodeURIComponent(job.id)}/download`;
     download.classList.remove('hidden');
     $('#newTaskButton').classList.remove('hidden');
-  } else if (job.status === 'FAILED') {
+  } else if (job.status === 'FAILED' || job.status === 'CANCELLED') {
     $('#progressTitle').textContent = '这次生成没有完成';
     orb.classList.add('failed');
     orb.querySelector('span').textContent = '!';
-    $('#errorBox').textContent = job.error || '未知错误';
+    $('#errorBox').textContent = job.status==='CANCELLED'?'任务已取消，可沿用方案重试。':job.error || '未知错误';
     $('#errorBox').classList.remove('hidden');
     $('#retryPlanButton').classList.remove('hidden');
     $('#newTaskButton').classList.remove('hidden');
@@ -559,10 +582,19 @@ async function openExisting(id) {
   }
 }
 
-function isTerminal(status) { return status === 'COMPLETED' || status === 'FAILED'; }
+function isTerminal(status) { return status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED'; }
+
+async function generationAction(action) {
+  if(!state.jobId)return;
+  try {
+    const job=await api(`/api/jobs/${encodeURIComponent(state.jobId)}/${action}`,{method:'POST'});
+    state.progressDismissed=false;openProgress(job);
+    if(isTerminal(job.status)){invalidatePolling();loadRecent();}else startPolling();
+  } catch(error){UI.toast(error.message,{variant:'error'});}
+}
 
 function statusText(status) {
-  return ({CHECKING_CODE: '检查代码', ANALYZING: '分析中', WAITING_CONFIRMATION: '待确认', QUEUED: '排队中', COMPILING: '编译中', GENERATING: '生成中', PACKAGING: '打包中', COMPLETED: '已完成', FAILED: '失败'})[status] || status;
+  return ({CHECKING_CODE: '检查代码', ANALYZING: '分析中', WAITING_CONFIRMATION: '待确认', QUEUED: '排队中', COMPILING: '编译中', GENERATING: '生成中', PACKAGING: '打包中', COMPLETED: '已完成', FAILED: '失败', CANCELLED:'已取消'})[status] || status;
 }
 
 function renderPlanReview(job) {
@@ -587,7 +619,9 @@ async function api(url, options = {}, config = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 && !config.silentAuth) showAuth('login', '请先登录或注册后继续操作。');
-    throw new Error(body.error || (response.status === 401 ? '请先登录或注册' : `请求失败 (${response.status})`));
+    const error = new Error(body.error || (response.status === 401 ? '请先登录或注册' : `请求失败 (${response.status})`));
+    error.status = response.status;
+    throw error;
   }
   return body;
 }

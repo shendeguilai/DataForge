@@ -12,6 +12,12 @@ import java.util.NoSuchElementException;
 
 @Service
 public class UserService implements UserDetailsService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.session.jdbc.JdbcIndexedSessionRepository sessions;
+
+    private void revokeSessions(String username) {
+        if (sessions != null) sessions.findByPrincipalName(username).keySet().forEach(sessions::deleteById);
+    }
     private final UserAccountRepository users;
     private final PasswordEncoder encoder;
     private final String inviteCode;
@@ -77,7 +83,9 @@ public class UserService implements UserDetailsService {
             throw new IllegalArgumentException("新密码不能与当前密码相同");
         }
         user.setPasswordHash(encoder.encode(newPassword));
-        return users.save(user);
+        UserAccount saved = users.save(user);
+        revokeSessions(user.getUsername());
+        return saved;
     }
 
     public UserAccount resetPassword(Long id, String newPassword, String operatorUsername) {
@@ -90,7 +98,9 @@ public class UserService implements UserDetailsService {
             throw new IllegalArgumentException("新密码不能与用户当前密码相同");
         }
         user.setPasswordHash(encoder.encode(newPassword));
-        return users.save(user);
+        UserAccount saved = users.save(user);
+        revokeSessions(user.getUsername());
+        return saved;
     }
 
     public UserAccount resetAdminPassword(String username, String password) {
@@ -100,7 +110,9 @@ public class UserService implements UserDetailsService {
         UserAccount user = requireByUsername(username);
         if (!"ADMIN".equals(user.getRole())) throw new IllegalArgumentException("指定账号不是管理员");
         user.setPasswordHash(encoder.encode(password));
-        return users.save(user);
+        UserAccount saved = users.save(user);
+        revokeSessions(user.getUsername());
+        return saved;
     }
 
     public UserAccount requireByUsername(String username) {
@@ -115,6 +127,7 @@ public class UserService implements UserDetailsService {
         if (enabled != null) {
             if ("ADMIN".equals(user.getRole()) && !enabled) throw new IllegalArgumentException("不能禁用管理员账号");
             user.setEnabled(enabled);
+            if (!enabled) revokeSessions(user.getUsername());
         }
         if (dailyGenerationLimit != null) {
             if (dailyGenerationLimit < 1 || dailyGenerationLimit > 10000) throw new IllegalArgumentException("每日生成次数限制必须在 1 到 10000 之间");

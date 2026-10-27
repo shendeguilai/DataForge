@@ -9,6 +9,10 @@
 ```text
 ghcr.io/<owner>/dataforge:<完整 Git 提交号>
 ghcr.io/<owner>/dataforge-csp-studio:<完整 Git 提交号>
+ghcr.io/<owner>/dataforge-generation-runner:<完整 Git 提交号>
+ghcr.io/<owner>/dataforge-generation-sandbox:<完整 Git 提交号>
+ghcr.io/<owner>/dataforge-csp-worker:<完整 Git 提交号>
+ghcr.io/<owner>/dataforge-csp-sandbox:<完整 Git 提交号>
 ghcr.io/<owner>/dataforge-postgres:17.10-bookworm
 ```
 
@@ -45,6 +49,7 @@ DATAFORGE_POSTGRES_IMAGE=ghcr.io/<owner>/dataforge-postgres:17.10-bookworm
 
 ```bash
 cd /opt/dataforge/app
+git pull --ff-only
 ./scripts/prod.sh deploy
 ./scripts/prod.sh status
 ```
@@ -61,7 +66,7 @@ docker compose --env-file /etc/dataforge/dataforge.env -f compose.prod.yml \
   "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8765/health'))['status']=='UP'"
 ```
 
-`db`、`app`、`csp-studio` 应全部为 `healthy`；CSP 服务只应显示 Compose 内部的 `8765/tcp`，不得出现宿主机端口映射。
+`db`、`app`、`csp-studio`、`generation-runner` 应全部为 `healthy`；CSP 服务和生成服务只在 Compose 内网开放，不发布宿主机端口。
 
 ## 5. 故障处理
 
@@ -72,7 +77,7 @@ docker compose --env-file /etc/dataforge/dataforge.env -f compose.prod.yml \
 
 ## 6. 国内服务器使用阿里云 ACR 加速
 
-工作流支持在 GHCR 发布完成后，将同一版本的三个镜像复制到 ACR，避免国内服务器跨境下载。未配置 ACR 时，原来的 GHCR 发布不受影响。
+工作流支持在 GHCR 发布完成后，将同一版本的应用、CSP、隔离执行与 PostgreSQL 镜像复制到 ACR，避免国内服务器跨境下载。未配置 ACR 时，原来的 GHCR 发布不受影响。
 
 在 GitHub 仓库 Settings → Secrets and variables → Actions 中配置：
 
@@ -83,7 +88,7 @@ docker compose --env-file /etc/dataforge/dataforge.env -f compose.prod.yml \
 | Variable（可选） | `ACR_NAMESPACE` | 命名空间，默认使用 GitHub 仓库所有者名称 |
 | Secret | `ACR_PASSWORD` | Registry 登录密码，不是阿里云网页登录密码 |
 
-ACR 命名空间需预先创建，并开启自动创建私有仓库；也可以预先手动创建 `dataforge`、`dataforge-csp-studio`、`dataforge-postgres` 三个私有仓库。选择与服务器相同地域的实例。个人版的免费政策、配额和适用场景以阿里云当前控制台为准，不会通过此工作流自动购买或升级实例。
+ACR 命名空间需预先创建，并开启自动创建私有仓库；或者预先创建以上同名私有仓库。选择与服务器相同地域的实例。个人版的免费政策、配额和适用场景以阿里云当前控制台为准，不会通过此工作流自动购买或升级实例。
 
 等待工作流的 `mirror-acr` 成功后，在服务器上以部署用户交互式登录（密码不会进入命令历史）：
 

@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "dataforge.crypto-secret=test-encryption-secret"
 })
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(cn.datacraft.CsrfTestConfiguration.class)
 class AdminTypingArticleControllerTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;

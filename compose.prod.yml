@@ -4,6 +4,7 @@ x-app-environment: &app-environment
   SPRING_PROFILES_ACTIVE: prod
   TZ: UTC
   PORT: "8080"
+  DATAFORGE_SESSION_TIMEOUT: ${DATAFORGE_SESSION_TIMEOUT:-7d}
   JAVA_TOOL_OPTIONS: ${DATAFORGE_JAVA_OPTIONS:-}
   DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB is required}
   DATABASE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -22,6 +23,10 @@ x-app-environment: &app-environment
   ATCODER_COOKIE: ${ATCODER_COOKIE:-}
   CSP_STUDIO_BASE_URL: ${CSP_STUDIO_BASE_URL:-http://csp-studio:8765}
   CSP_SIM_WORKER_SECRET: ${CSP_SIM_WORKER_SECRET:-}
+  DATAFORGE_EXECUTION_SECRET: ${DATAFORGE_EXECUTION_SECRET:-}
+  DATAFORGE_GENERATION_CONCURRENCY: ${DATAFORGE_GENERATION_CONCURRENCY:-1}
+  DATAFORGE_TEMP_RETENTION_DAYS: ${DATAFORGE_TEMP_RETENTION_DAYS:-30}
+  DATAFORGE_TEMP_CLEANUP_ENABLED: ${DATAFORGE_TEMP_CLEANUP_ENABLED:-false}
   QUIZ_COUNTDOWN_SECONDS: ${QUIZ_COUNTDOWN_SECONDS:-3}
   QUIZ_BUZZ_SECONDS: ${QUIZ_BUZZ_SECONDS:-15}
   QUIZ_ROOM_EXPIRY_MINUTES: ${QUIZ_ROOM_EXPIRY_MINUTES:-30}
@@ -43,6 +48,39 @@ x-app-base: &app-base
     - no-new-privileges:true
 
 services:
+  generation-runner:
+    image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-generation-runner:${DATAFORGE_IMAGE_TAG:-local}
+    build:
+      context: services/generation-runner
+    environment:
+      DATAFORGE_EXECUTION_SECRET: ${DATAFORGE_EXECUTION_SECRET:-}
+      DATAFORGE_GENERATION_CONCURRENCY: ${DATAFORGE_GENERATION_CONCURRENCY:-1}
+      DATAFORGE_GENERATION_SANDBOX_IMAGE: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-generation-sandbox:${DATAFORGE_IMAGE_TAG:-local}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:size=${DATAFORGE_RUNNER_TMP_SIZE:-192m},mode=1777
+    mem_limit: ${DATAFORGE_RUNNER_MEMORY_LIMIT:-256m}
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8780/health', timeout=6)"]
+      interval: 10s
+      timeout: 8s
+      retries: 6
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  generation-sandbox-image:
+    profiles: ["generation-build"]
+    image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-generation-sandbox:${DATAFORGE_IMAGE_TAG:-local}
+    build:
+      context: services/generation-runner
+      dockerfile: Dockerfile.sandbox
+    entrypoint: ["/bin/true"]
+    restart: "no"
   csp-judge-worker:
     profiles: ["csp-sim"]
     image: ${DATAFORGE_REGISTRY_PREFIX:-}dataforge-csp-worker:${DATAFORGE_IMAGE_TAG:-local}
@@ -101,6 +139,8 @@ services:
       db:
         condition: service_healthy
       csp-studio:
+        condition: service_healthy
+      generation-runner:
         condition: service_healthy
     ports:
       - ${PUBLIC_PORT:-8080}:8080

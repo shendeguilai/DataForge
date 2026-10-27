@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:homework-tests;DB_CLOSE_DELAY=-1", "dataforge.homework.scheduling-enabled=false",
         "dataforge.bootstrap-enabled=false", "dataforge.runtime-dir=${java.io.tmpdir}/homework-test-runtime"})
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(cn.datacraft.CsrfTestConfiguration.class)
 class HomeworkIntegrationTest {
     @Autowired HomeworkRepository repository;
     @Autowired ObjectMapper json;

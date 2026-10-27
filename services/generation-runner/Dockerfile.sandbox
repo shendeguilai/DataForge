@@ -1,0 +1,8 @@
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends g++ python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -g 10001 runner && useradd -u 10001 -g runner -M runner
+COPY sandbox.py /sandbox.py
+USER 10001:10001
+WORKDIR /work
+ENTRYPOINT ["python3", "/sandbox.py"]

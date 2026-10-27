@@ -83,6 +83,12 @@ chmod 600 /etc/dataforge/dataforge.env
 
 必须替换全部 `CHANGE_ME`。`DATAFORGE_SECRET` 上线后必须保持稳定；更换它会导致数据库中的 AI Key 无法解密。`ADMIN_PASSWORD` 仅在管理员账号不存在时用于初始化，已有管理员要通过 `reset-admin-password` 修改。
 
+数据生成使用独立 `generation-runner` 服务，它负责创建无网络、非特权的临时容器执行 C++，网站进程不挂载 Docker 套接字。`DATAFORGE_EXECUTION_SECRET` 留空时，`prod.sh deploy` 会自动生成并写入 `/etc/dataforge/dataforge.env`；也可以事先填入 24～128 位由英文字母、数字、下划线或连字符组成的独立随机值。密钥只供网站与内部执行服务使用，不能复用示例值或发给学生。直接使用 `docker compose` 时必须自行配置密钥并预先构建或拉取生成沙箱镜像。
+
+默认同时执行 1 个生成任务，每个沙箱的内存上限为 1 GB；2 核 2 GB 主机应先保持默认值，避免与 CSP 评测同时耗尽内存。服务失败时后台任务会显示失败，可在数据工坊沿用方案重试；不会回退到网站进程执行不可信代码。默认登录 Cookie 最多保留 7 天、会话闲置 7 天失效，可用 `DATAFORGE_SESSION_TIMEOUT` 修改；HTTPS 反向代理应正确传递原始协议并配置安全 Cookie。
+
+如果确实需要把 `DATAFORGE_GENERATION_CONCURRENCY` 提高到 2～4，也必须同时增大 `DATAFORGE_RUNNER_TMP_SIZE` 与 `DATAFORGE_RUNNER_MEMORY_LIMIT`。每个并发任务的请求和结果合计最多约 160 MB，建议临时空间按并发数每个任务预留至少 160 MB，再给服务进程额外预留内存；另外还要为每个独立沙箱预留最高 1 GB。不要在 2 GB 服务器上直接提高并发数。
+
 验证 Compose 配置。该命令只展开配置，不启动容器：
 
 ```bash
@@ -184,25 +190,28 @@ sudo systemctl list-timers dataforge-backup.timer
 
 自动清理仅处理 `/srv/dataforge/backups` 下名称以日期开头且超过 14 天的目录。每月至少在测试服务器执行一次恢复演练。禁止把运行中的 `/srv/dataforge/postgres` 当作备份直接复制。
 
+后台“运行与容量”显示磁盘空间、生成任务状态和最近成功备份提醒。备份完成后脚本会在 runtime 内写入仅记录时间的标记；升级后首次备份之前也会提示。该提醒无法替代实际恢复演练或异地备份。清理按钮先预览超过 `DATAFORGE_TEMP_RETENTION_DAYS` 的终态任务临时文件，确认后才删除；会保留数据包、质量报告和学生文件。`DATAFORGE_TEMP_CLEANUP_ENABLED=true` 可显式启用每日自动清理，默认关闭。
+
 ## 7. 从 GitHub 更新生产环境
 
-更新前确认没有正在进行的生成任务、打字比赛或抢答课堂；更新会让所有 Session 和实时房间失效。
+更新前确认没有正在进行的打字比赛或抢答课堂；实时房间仍在内存中，更新会中断。升级到持久会话的首次更新需要用户重新登录一次，之后会话会随数据库保留；长任务会在服务恢复后重新领取。
 
 ```bash
 sudo -iu dataforge
 cd /opt/dataforge/app
 git status --short
+git pull --ff-only
 ./scripts/prod.sh deploy
 ```
 
 `deploy` 会按顺序：
 
 1. 拒绝有本地改动的工作区，记录当前成功提交。
-2. 使用 `git pull --ff-only` 拉取 GitHub 更新。
+2. 使用 `git pull --ff-only` 拉取 GitHub 更新。首次升级本版本务必先在命令行拉取，再执行脚本，确保使用的是包含新隔离服务的脚本。
 3. `build` 模式以新提交号在服务器构建镜像；`registry` 模式从私有仓库拉取 GitHub Actions 已发布的成品镜像。准备失败时旧服务继续运行。
 4. 停止应用，创建 `*-predeploy` 数据库和 runtime 备份。
 5. 启动新镜像；Flyway 在 JPA 启动前应用新迁移并校验历史校验和。
-6. 等待 CSP Paper Studio 与 `/actuator/health` 都返回 `UP`，成功后写入 `deployed_commit`。
+6. 确保独立隔离执行服务就绪，等待 CSP Paper Studio 与 `/actuator/health` 都返回 `UP`，成功后写入 `deployed_commit`。
 7. 健康检查失败时自动尝试恢复旧镜像。
 
 生产配置和数据都在仓库外，因此 `git pull` 不会覆盖它们。以后新增数据库字段时，必须新建 `V2__...sql`、`V3__...sql` 等迁移；已在生产执行的 SQL 文件绝对不能修改或删除。

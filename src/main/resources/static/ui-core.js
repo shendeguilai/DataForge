@@ -1,6 +1,32 @@
 (function (window, document) {
   'use strict';
 
+  const originalFetch = window.fetch.bind(window);
+  let csrfPromise = null;
+  async function csrfToken(refresh = false) {
+    if (!csrfPromise || refresh) csrfPromise = originalFetch('/api/auth/csrf', {cache: 'no-store'})
+      .then(async response => {if (!response.ok) throw new Error('暂时无法连接服务器，请稍后重试');return response.json();})
+      .catch(error => {csrfPromise = null;throw error;});
+    return csrfPromise;
+  }
+  window.DataForgeAuth = {csrf: csrfToken};
+  window.fetch = async function(input, options = {}) {
+    const url = new URL(input instanceof Request ? input.url : input, window.location.href);
+    const method = (options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (url.origin !== window.location.origin || ['GET','HEAD','OPTIONS'].includes(method)) return originalFetch(input, options);
+    // Clone requests before sending so a rejected CSRF request can be retried once, before any mutation occurs.
+    const saved = input instanceof Request ? input.clone() : input;
+    const send = async refresh => {
+      const csrf = await csrfToken(refresh);
+      const headers = new Headers(options.headers || (input instanceof Request ? input.headers : {}));
+      headers.set(csrf.headerName, csrf.token);
+      return originalFetch(saved instanceof Request ? saved.clone() : saved, {...options, headers});
+    };
+    const response = await send(false);
+    if (response.status === 403 && response.headers.get('X-DataForge-CSRF') === 'required') return send(true);
+    return response;
+  };
+
   const dialogState = new WeakMap();
   const busyState = new WeakMap();
   let lockedDialogs = 0;

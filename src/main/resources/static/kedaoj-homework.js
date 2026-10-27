@@ -160,6 +160,8 @@
   async function reloadAssignments() { state.assignments = await request('/assignments'); renderAssignments(); }
   async function load() {
     const [settings, classes, assignments, task] = await Promise.all([request('/settings'), request('/classes'), request('/assignments'), request('/tasks/active')]);
+    const requested=new URLSearchParams(location.search).get('assignment');
+    if(!state.assignmentId&&requested){const a=assignments.find(a=>a.id===requested);if(a){state.classId=a.classId;state.assignmentId=a.id;}}
     Object.assign(state, {settings, classes, assignments}); renderSettings(); renderClasses();
     if (task) watch(task);
     else { clearTimeout(pollTimer); state.task = null; state.progressError = null; renderUpdateState(current()); }

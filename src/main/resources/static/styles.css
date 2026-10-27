@@ -417,3 +417,4 @@ footer { max-width: 1180px; margin: 0 auto; padding: 22px 0 30px; border-top: 1p
   .plan-group { grid-template-columns: 76px minmax(0, 1fr); }
   footer { flex-direction: column; }
 }
+html.embedded-generator .topbar { display: none; }

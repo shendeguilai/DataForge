@@ -9,5 +9,6 @@ public enum JobStatus {
     GENERATING,
     PACKAGING,
     COMPLETED,
-    FAILED
+    FAILED,
+    CANCELLED
 }

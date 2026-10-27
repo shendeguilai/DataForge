@@ -2,6 +2,8 @@ const portal$ = (selector) => document.querySelector(selector);
 const portalUI = window.DataForgeUI || {openDialog: (dialog) => dialog?.classList.remove('hidden'), closeDialog: (dialog) => dialog?.classList.add('hidden'), toast: (message) => window.alert(message), setBusy: (button, busy) => { if (button) button.disabled = busy; }};
 let portalCurrentUser = null;
 let portalPendingHref = null;
+let portalAuthState = 'checking';
+window.DataForgePortal = {get state() { return portalAuthState; }, get user() { return portalCurrentUser; }};
 
 async function portalBoot() {
   ensurePortalAuthView();
@@ -14,9 +16,14 @@ async function portalBoot() {
     if (queryNext && new URLSearchParams(window.location.search).get('auth') === 'login') {
       window.setTimeout(() => { window.location.href = queryNext; }, 0);
     }
-  } catch (_) {
-    showPortalAnonymous();
-    if (new URLSearchParams(window.location.search).get('auth') === 'login') showPortalAuth('login');
+  } catch (error) {
+    if (error.status === 401) {
+      showPortalAnonymous();
+      if (new URLSearchParams(window.location.search).get('auth') === 'login') showPortalAuth('login');
+    } else {
+      portalAuthState = 'unavailable';
+      portalUI.toast('暂时无法确认登录状态，请检查网络后刷新重试。', {variant: 'error'});
+    }
   }
 }
 
@@ -96,6 +103,10 @@ function bindPortalEvents() {
         portalUI.toast('目标地址无效', {variant: 'error'});
         return;
       }
+      if (portalAuthState === 'unavailable' || portalAuthState === 'checking') {
+        portalUI.toast('暂时无法确认登录状态，请检查网络后刷新重试。', {variant: 'error'});
+        return;
+      }
       if (portalCurrentUser) location.href = href;
       else {
         portalPendingHref = href;
@@ -172,6 +183,7 @@ async function submitPortalAuth(url, payload, submitButton) {
 
 function showPortalUser(user) {
   portalCurrentUser = user;
+  portalAuthState = 'authenticated';
   portal$('#accountActions')?.classList.remove('hidden');
   portal$('#anonymousActions')?.classList.add('hidden');
   const name = portal$('#currentUsername');
@@ -182,6 +194,7 @@ function showPortalUser(user) {
 
 function showPortalAnonymous() {
   portalCurrentUser = null;
+  portalAuthState = 'anonymous';
   portal$('#accountActions')?.classList.add('hidden');
   portal$('#anonymousActions')?.classList.remove('hidden');
 }
@@ -189,7 +202,11 @@ function showPortalAnonymous() {
 async function portalRequest(url, options = {}) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `请求失败 (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(body.error || `请求失败 (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 

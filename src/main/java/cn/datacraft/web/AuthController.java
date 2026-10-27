@@ -25,22 +25,24 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest servletRequest) {
+    public Map<String, Object> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest servletRequest, HttpServletResponse response) {
         users.register(request.username, request.password, request.inviteCode);
-        return authenticate(request.username, request.password, servletRequest);
+        return authenticate(request.username, request.password, servletRequest, response);
     }
 
     @PostMapping("/login")
-    public Map<String, Object> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
-        return authenticate(request.username, request.password, servletRequest);
+    public Map<String, Object> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest, HttpServletResponse response) {
+        return authenticate(request.username, request.password, servletRequest, response);
     }
 
-    private Map<String, Object> authenticate(String username, String password, HttpServletRequest request) {
+    private Map<String, Object> authenticate(String username, String password, HttpServletRequest request, HttpServletResponse response) {
         Authentication auth = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(auth);
         SecurityContextHolder.setContext(context);
-        request.getSession(true).setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+        request.getSession(true);
+        request.changeSessionId();
+        new HttpSessionSecurityContextRepository().saveContext(context, request, response);
         return view(users.requireByUsername(auth.getName()));
     }
 
@@ -49,11 +51,18 @@ public class AuthController {
         if (auth == null || !auth.isAuthenticated()) throw new BadCredentialsException("尚未登录");
         return view(users.requireByUsername(auth.getName()));
     }
+    @GetMapping("/csrf") public Map<String,String> csrf(org.springframework.security.web.csrf.CsrfToken token) {
+        return Map.of("token",token.getToken(),"headerName",token.getHeaderName());
+    }
 
     @PutMapping("/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication auth) {
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication auth,
+                               HttpServletRequest servletRequest, HttpServletResponse response) {
         users.changePassword(auth.getName(), request.currentPassword, request.newPassword);
+        HttpSession session = servletRequest.getSession(false);
+        if (session != null) session.invalidate();
+        authenticate(auth.getName(), request.newPassword, servletRequest, response);
     }
 
     @PostMapping("/logout")

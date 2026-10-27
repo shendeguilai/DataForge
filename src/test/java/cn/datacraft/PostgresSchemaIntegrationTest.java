@@ -63,8 +63,9 @@ class PostgresSchemaIntegrationTest {
                 WHERE table_schema = 'public'
                   AND table_name IN ('atcoder_leaderboard_config', 'atcoder_leaderboard_snapshots',
                     'atcoder_leaderboard_participants', 'atcoder_cookie_config', 'atcoder_problem_translations',
-                    'kedaoj_homework_records')
-                """, Integer.class)).isEqualTo(6);
+                    'kedaoj_homework_records', 'spring_session', 'spring_session_attributes',
+                    'generation_task_queue', 'site_tool_order')
+                """, Integer.class)).isEqualTo(10);
     }
 
     @Test

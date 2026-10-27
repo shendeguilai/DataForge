@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "dataforge.quiz.countdown-seconds=0"
 })
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(cn.datacraft.CsrfTestConfiguration.class)
 class QuizRoomControllerTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;

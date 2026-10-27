@@ -32,6 +32,8 @@ public class JobService {
     private final ArtifactStorage artifacts;
     private final Executor jobExecutor;
     private final int processStackMb;
+    @org.springframework.beans.factory.annotation.Autowired private GenerationTaskQueue queue;
+    @org.springframework.beans.factory.annotation.Autowired private ProgramExecution execution;
 
     public JobService(JobRepository repository, AiPlanner planner, AiConfigService config, ObjectMapper mapper,
                       @Qualifier("jobExecutor") Executor jobExecutor, ArtifactStorage artifacts,
@@ -46,28 +48,28 @@ public class JobService {
         this.runtimeRoot = artifacts.root();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public synchronized GenerationJob create(GenerationRequest request, Long userId, Integer userDailyGenerationLimit) {
         enforceDailyLimit(userId, userDailyGenerationLimit);
         GenerationJob job = new GenerationJob();
         job.setUserId(userId);
         job.setRequest(request);
         repository.save(job);
-        jobExecutor.execute(() -> analyze(job.getId()));
+        queue.enqueue(job.getId(),"ANALYZE");
         return job;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public GenerationJob retryPlan(UUID id) {
         GenerationJob job = require(id);
-        if (job.getStatus() != JobStatus.FAILED) {
+        if (job.getStatus() != JobStatus.FAILED && job.getStatus()!=JobStatus.CANCELLED) {
             throw new IllegalStateException("只有失败的任务才能重新生成方案");
         }
-        DataPlan previousPlan = job.getPlan();
-        String previousError = job.getError();
-        job.clearError();
+        repository.prepareRetry(id);
         job.setArtifact(null);
         job.update(JobStatus.CHECKING_CODE, 4, "正在根据失败原因重新生成方案");
         repository.save(job);
-        jobExecutor.execute(() -> analyze(id, previousPlan, previousError));
+        queue.enqueue(id,"ANALYZE");
         return job;
     }
 
@@ -81,12 +83,14 @@ public class JobService {
     }
 
     public void analyze(UUID id) {
-        analyze(id, null, null);
+        GenerationJob previous = require(id);
+        analyze(id, previous.getPlan(), previous.getError());
     }
 
     private void analyze(UUID id, DataPlan previousPlan, String previousError) {
         GenerationJob job = require(id);
         try {
+            job.clearError();
             job.update(JobStatus.CHECKING_CODE, 4, "正在检查并编译标准程序");
             repository.save(job);
             validateStandardProgram(job);
@@ -106,6 +110,7 @@ public class JobService {
         }
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public GenerationJob confirm(UUID id) {
         GenerationJob job = require(id);
         if (job.getStatus() != JobStatus.WAITING_CONFIRMATION) {
@@ -113,8 +118,28 @@ public class JobService {
         }
         job.update(JobStatus.QUEUED, 22, "任务已进入生成队列");
         repository.save(job);
-        jobExecutor.execute(() -> generate(id));
+        queue.enqueue(id,"GENERATE");
         return job;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public GenerationJob cancel(UUID id) {
+        GenerationJob job=require(id);
+        if(job.getStatus()==JobStatus.COMPLETED || job.getStatus()==JobStatus.FAILED || job.getStatus()==JobStatus.CANCELLED)return job;
+        job.update(JobStatus.CANCELLED,job.getProgress(),"任务已取消");repository.save(job);queue.cancel(id);return job;
+    }
+    @org.springframework.transaction.annotation.Transactional
+    public GenerationJob retryGeneration(UUID id) {
+        GenerationJob job=require(id);repository.prepareRetry(id);
+        if(job.getPlan()==null)return retryPlan(id);
+        job.clearError();job.update(JobStatus.QUEUED,22,"沿用已确认的方案，重新生成数据");repository.save(job);queue.enqueue(id,"GENERATE");return job;
+    }
+    public Map<String,Object> report(UUID id) throws IOException {
+        GenerationJob job=require(id);
+        if(!job.isDownloadReady())throw new IllegalStateException("数据报告尚未生成");
+        Path report=runtimeRoot.resolve(id.toString()).resolve("manifest.json");
+        if(!Files.isRegularFile(report)||Files.size(report)>1024*1024)throw new IllegalStateException("该历史任务没有可用的数据报告");
+        return mapper.readValue(report.toFile(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});
     }
 
     public void generate(UUID id) {
@@ -131,6 +156,9 @@ public class JobService {
             String suffix = isWindows() ? ".exe" : "";
             Path generatorExe = dir.resolve("generator" + suffix);
             Path standardExe = dir.resolve("standard" + suffix);
+            Path validator=compileOptional(job.getRequest().getValidatorCode(),"validator",job,dir,suffix);
+            Path brute=compileOptional(job.getRequest().getBruteCode(),"brute",job,dir,suffix);
+            Set<String> inputHashes=new HashSet<>(); int duplicates=0,compared=0;
             try {
                 compile(generatorSource, generatorExe, job.getRequest().getCppStandard(), dir);
             } catch (Exception ex) {
@@ -157,6 +185,11 @@ public class JobService {
                     throw new IOException("AI 数据生成器运行失败（第 " + i + " 组，seed=" + seed + "）：\n" + cleanError(ex), ex);
                 }
                 if (Files.size(input) == 0 || Files.size(input) > 64L * 1024 * 1024) throw new IOException("第 " + i + " 组输入为空或超过 64MB 限制");
+                if(validator!=null) {
+                    try {run(List.of(validator.toString()),dir,input,null,Duration.ofSeconds(5));}
+                    catch(Exception ex){throw new IOException("第 "+i+" 组数据未通过 Validator，seed="+seed+"："+cleanError(ex),ex);}
+                }
+                String hash=hash(input); if(!inputHashes.add(hash))duplicates++;
                 Instant started = Instant.now();
                 try {
                     run(Collections.singletonList(standardExe.toString()), dir, input, output, Duration.ofSeconds(10));
@@ -166,6 +199,13 @@ public class JobService {
                 Map<String, Object> meta = new LinkedHashMap<>();
                 meta.put("id", i); meta.put("seed", seed); meta.put("inputBytes", Files.size(input));
                 meta.put("outputBytes", Files.size(output)); meta.put("runtimeMs", Duration.between(started, Instant.now()).toMillis());
+                meta.put("inputSha256",hash);meta.put("validator",validator==null?"NOT_CONFIGURED":"PASSED");
+                if(brute!=null&&Files.size(input)<=65536) {
+                    Path answer=dir.resolve("brute-output.tmp");
+                    run(List.of(brute.toString()),dir,input,answer,Duration.ofSeconds(5));compared++;
+                    if(!normalizedDigest(output).equals(normalizedDigest(answer)))throw new IOException("小数据对拍不一致：第 "+i+" 组，seed="+seed);
+                    Files.deleteIfExists(answer);meta.put("comparison","PASSED");
+                } else meta.put("comparison",brute==null?"NOT_CONFIGURED":"SKIPPED_LARGE_INPUT");
                 cases.add(meta);
             }
             job.update(JobStatus.PACKAGING, 92, "正在生成报告并打包 ZIP");
@@ -173,6 +213,9 @@ public class JobService {
             Map<String, Object> manifest = new LinkedHashMap<>();
             manifest.put("jobId", id); manifest.put("createdAt", Instant.now()); manifest.put("caseCount", count);
             manifest.put("aiGenerated", job.getPlan().isAiGenerated()); manifest.put("cases", cases);
+            manifest.put("quality",Map.of("validatorConfigured",validator!=null,"bruteConfigured",brute!=null,
+                    "comparedCases",compared,"duplicateInputs",duplicates,"uniqueInputs",inputHashes.size(),
+                    "note","对拍仅执行于实际生成且不超过64KB的输入；未对拍项不能视为通过。题意覆盖需教师复核。"));
             Files.write(dir.resolve("manifest.json"), mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
             Files.write(dir.resolve("problem.md"), job.getRequest().getStatement().getBytes(StandardCharsets.UTF_8));
             Path pendingZip = artifacts.pendingZip(id);
@@ -236,14 +279,22 @@ public class JobService {
     }
 
     private void run(List<String> command, Path workDir, Path input, Path output, Duration timeout) throws Exception {
+        if(Thread.currentThread().isInterrupted())throw new GenerationCancelledException("任务已中断");
+        if(execution.remote()){execution.run(command,workDir,input,output,timeout);return;}
         ProcessBuilder builder = new ProcessBuilder(withProcessStackLimit(command)).directory(workDir.toFile());
+        String executablePath=builder.environment().get("PATH");
+        builder.environment().clear();if(executablePath!=null)builder.environment().put("PATH",executablePath);
+        builder.environment().put("LANG","C.UTF-8");
         if (input != null) builder.redirectInput(input.toFile());
         if (output != null) builder.redirectOutput(output.toFile()); else builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         Path error = Files.createTempFile(workDir, "process-", ".err");
         builder.redirectError(error.toFile());
         Process process = builder.start();
-        boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        boolean finished;
+        try {finished=process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);}
+        catch(InterruptedException e){process.descendants().forEach(ProcessHandle::destroyForcibly);process.destroyForcibly();Thread.currentThread().interrupt();throw e;}
         if (!finished) {
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
             process.destroyForcibly();
             throw new IOException("程序运行超时（" + timeout.getSeconds() + " 秒）");
         }
@@ -281,7 +332,7 @@ public class JobService {
             paths.filter(Files::isRegularFile).forEach(path -> {
                 try {
                     String name = source.relativize(path).toString().replace('\\', '/');
-                    if (name.endsWith(".exe") || name.endsWith(".err")) return;
+                    if (!name.matches(".*\\.(cpp|md|json|in|out)$")) return;
                     out.putNextEntry(new ZipEntry(name));
                     Files.copy(path, out);
                     out.closeEntry();
@@ -298,6 +349,32 @@ public class JobService {
     }
     public List<GenerationJob> recent(Long userId) { return repository.recent(userId); }
     public List<GenerationJob> recentAll() { return repository.recentAll(); }
+    private Path compileOptional(String code,String name,GenerationJob job,Path dir,String suffix)throws Exception {
+        if(code==null||code.isBlank())return null;
+        if(!hasMainFunction(code))throw new IllegalArgumentException(name+" 中没有找到 main 函数");
+        Path source=dir.resolve(name+".cpp"),binary=dir.resolve(name+suffix);Files.writeString(source,code);
+        compile(source,binary,job.getRequest().getCppStandard(),dir);return binary;
+    }
+    private static String hash(Path file)throws Exception {
+        var digest=java.security.MessageDigest.getInstance("SHA-256");
+        try(var in=Files.newInputStream(file)){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);}
+        return java.util.HexFormat.of().formatHex(digest.digest());
+    }
+    private static String normalizedDigest(Path file)throws Exception {
+        if(Files.size(file)>64L*1024*1024)throw new IOException("输出超过64MB上限");
+        var digest=java.security.MessageDigest.getInstance("SHA-256");
+        try(var reader=Files.newBufferedReader(file,StandardCharsets.UTF_8)) {
+            String line;boolean written=false;int pendingBlank=0;
+            while((line=reader.readLine())!=null) {
+                line=line.replaceFirst("[ \\t]+$","");
+                if(line.isEmpty()){pendingBlank++;continue;}
+                if(written)digest.update((byte)'\n');
+                while(pendingBlank-->0)digest.update((byte)'\n');
+                pendingBlank=0;digest.update(line.getBytes(StandardCharsets.UTF_8));written=true;
+            }
+        }
+        return java.util.HexFormat.of().formatHex(digest.digest());
+    }
     static boolean hasMainFunction(String code) {
         return code != null && !code.contains("```") && MAIN_FUNCTION.matcher(code).find();
     }

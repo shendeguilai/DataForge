@@ -70,12 +70,16 @@
   async function checkAuthentication(showPrompt = false) {
     try {
       const response = await fetch('/api/auth/me', {headers: {'Accept': 'application/json'}});
-      setAuthenticated(response.ok);
-      if (!response.ok && showPrompt) requestLogin();
+      if (response.status === 401) {
+        setAuthenticated(false);
+        if (showPrompt) requestLogin();
+        return false;
+      }
+      if (!response.ok) throw new Error('登录检查暂时不可用');
+      setAuthenticated(true);
       return response.ok;
     } catch (_) {
-      setAuthenticated(false);
-      if (showPrompt) requestLogin('暂时无法确认登录状态，请稍后重试。');
+      if (showPrompt) toast('暂时无法确认登录状态，请检查网络后重试。');
       return false;
     }
   }

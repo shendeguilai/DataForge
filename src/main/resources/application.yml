@@ -1,11 +1,24 @@
 server:
   port: ${PORT:8080}
+  servlet:
+    session:
+      timeout: ${DATAFORGE_SESSION_TIMEOUT:7d}
+      cookie:
+        name: DATAFORGE_SESSION
+        path: /
+        http-only: true
+        same-site: lax
+        max-age: ${DATAFORGE_SESSION_TIMEOUT:7d}
   tomcat:
     max-part-count: 2050
   compression:
     enabled: true
 
 spring:
+  session:
+    jdbc:
+      initialize-schema: always
+      schema: classpath:db/session/schema-h2.sql
   datasource:
     url: ${DATABASE_URL:jdbc:h2:file:./data/dataforge;AUTO_SERVER=TRUE}
     username: ${DATABASE_USERNAME:sa}
@@ -27,6 +40,11 @@ spring:
       location: ${DATAFORGE_MULTIPART_DIR:${dataforge.runtime-dir}/multipart}
 
 dataforge:
+  generation:
+    concurrency: ${DATAFORGE_GENERATION_CONCURRENCY:1}
+  operations:
+    retention-days: ${DATAFORGE_TEMP_RETENTION_DAYS:30}
+    cleanup-enabled: ${DATAFORGE_TEMP_CLEANUP_ENABLED:false}
   runtime-dir: ${DATAFORGE_RUNTIME_DIR:./runtime}
   csp-sim:
     worker-secret: ${CSP_SIM_WORKER_SECRET:}

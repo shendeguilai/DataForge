@@ -19,6 +19,8 @@ public class JobRecord {
     @Column(name = "error", columnDefinition = "TEXT") String error;
     @Column(name = "statement", nullable = false, columnDefinition = "TEXT") String statement;
     @Column(name = "standard_code", nullable = false, columnDefinition = "TEXT") String standardCode;
+    @Column(name = "validator_code",columnDefinition = "TEXT") String validatorCode;
+    @Column(name = "brute_code",columnDefinition = "TEXT") String bruteCode;
     @Column(name = "requirements", nullable = false, columnDefinition = "TEXT") String requirements;
     @Column(name = "case_count", nullable = false)
     int caseCount;

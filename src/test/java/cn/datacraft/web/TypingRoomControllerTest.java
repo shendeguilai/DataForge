@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "dataforge.typing.round-seconds=2"
 })
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(cn.datacraft.CsrfTestConfiguration.class)
 class TypingRoomControllerTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;

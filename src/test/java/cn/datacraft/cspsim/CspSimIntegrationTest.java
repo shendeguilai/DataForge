@@ -27,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:csp-integration;DB_CLOSE_DELAY=-1", "dataforge.csp-sim.worker-secret=test-worker-key-at-least-24-characters"})
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(cn.datacraft.CsrfTestConfiguration.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class CspSimIntegrationTest {
     static final String KEY="test-worker-key-at-least-24-characters";

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/portal.css">
     <link rel="stylesheet" href="/auth.css">
+    <script>if (new URLSearchParams(location.search).get('embedded') === '1') document.documentElement.classList.add('embedded-generator');</script>
     <script src="/ui-core.js"></script>
 </head>
 <body>
@@ -18,9 +19,8 @@
         <small>比赛工具站</small>
     </a>
     <nav class="module-nav" aria-label="站点模块">
-        <a class="active" href="/">数据工坊</a>
         <a href="/algorithms.html">算法可视化</a>
-        <a href="/tools.html">实用工具</a>
+        <a class="active" href="/tools.html">实用工具</a>
     </nav>
     <div class="account-actions hidden" id="accountActions">
         <a class="ghost-btn admin-link hidden" id="adminLink" href="/admin.html">后台管理</a>
@@ -76,6 +76,10 @@
                 <span class="hint">自然语言描述即可</span>
             </div>
             <textarea id="requirements" class="requirements" required maxlength="30000" aria-label="数据要求"></textarea>
+            <details><summary>可选：输入校验与小数据对拍</summary>
+                <label>Validator C++ 程序<textarea id="validatorCode" maxlength="100000" spellcheck="false" placeholder="从标准输入读取测试数据，合法返回0，不合法返回非0。"></textarea></label>
+                <label>暴力 C++ 程序<textarea id="bruteCode" maxlength="100000" spellcheck="false" placeholder="仅对实际生成且不超过64KB的输入运行，单次限时5秒。未执行的测试点会明确标注。"></textarea></label>
+            </details>
 
             <div class="form-footer">
                 <label class="count-field">
@@ -158,6 +162,10 @@
             <div id="errorBox" class="error-box hidden"></div>
             <a id="downloadButton" class="primary-btn wide hidden" href="#"><span>下载数据包 ZIP</span><b>↓</b></a>
             <button id="retryPlanButton" class="primary-btn wide hidden" type="button"><span>根据错误重新生成方案</span><b>↻</b></button>
+            <button id="retryGenerationButton" class="ghost-btn hidden" type="button">沿用方案重试生成</button>
+            <button id="cancelGenerationButton" class="ghost-btn hidden" type="button">取消任务</button>
+            <button id="qualityReportButton" class="ghost-btn hidden" type="button">查看数据质量报告</button>
+            <pre id="qualityReport" class="hidden" aria-live="polite"></pre>
             <button id="newTaskButton" class="text-btn hidden" type="button">再生成一份</button>
         </div>
     </section>

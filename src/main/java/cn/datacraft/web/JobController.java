@@ -59,6 +59,9 @@ public class JobController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=algorithm-data-" + id + ".zip")
                 .body(file);
     }
+    @PostMapping("/{id}/cancel") public GenerationJob cancel(@PathVariable UUID id,Principal principal){jobs.requireOwned(id,userId(principal));return jobs.cancel(id);}
+    @PostMapping("/{id}/retry-generation") public GenerationJob retry(@PathVariable UUID id,Principal principal){jobs.requireOwned(id,userId(principal));return jobs.retryGeneration(id);}
+    @GetMapping("/{id}/report") public Object report(@PathVariable UUID id,Principal principal)throws IOException{jobs.requireOwned(id,userId(principal));return jobs.report(id);}
     private Long userId(Principal principal) { return currentUser(principal).getId(); }
     private UserAccount currentUser(Principal principal) { return users.requireByUsername(principal.getName()); }
 }

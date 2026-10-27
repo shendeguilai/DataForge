@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CspPaperStudioController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class,cn.datacraft.CsrfTestConfiguration.class})
 class CspPaperStudioControllerTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper objectMapper;

@@ -81,6 +81,23 @@ prepare_directories() {
   fi
 }
 
+ensure_execution_secret() {
+  if [[ -z ${DATAFORGE_EXECUTION_SECRET:-} ]]; then
+    [[ -w "$ENV_FILE" ]] || die "请给 $ENV_FILE 写入 DATAFORGE_EXECUTION_SECRET（至少24个随机字符）"
+    require_command od
+    require_command head
+    require_command tr
+    DATAFORGE_EXECUTION_SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    [[ ${#DATAFORGE_EXECUTION_SECRET} -eq 64 ]] || die "无法生成隔离执行密钥"
+    (umask 077; printf '\nDATAFORGE_EXECUTION_SECRET=%s\n' "$DATAFORGE_EXECUTION_SECRET" >> "$ENV_FILE")
+    chmod 600 "$ENV_FILE"
+    export DATAFORGE_EXECUTION_SECRET
+    echo "已为隔离执行服务生成独立密钥并保存到生产配置。"
+  fi
+  [[ "$DATAFORGE_EXECUTION_SECRET" =~ ^[A-Za-z0-9_-]{24,128}$ && "$DATAFORGE_EXECUTION_SECRET" != CHANGE_ME* ]] ||
+    die "DATAFORGE_EXECUTION_SECRET 需要24～128位字母、数字、下划线或连字符，不能使用示例占位值"
+}
+
 compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
@@ -98,6 +115,9 @@ uses_registry_images() {
 prepare_release_images() {
   local tag=$1
   local services=(app csp-studio)
+  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+    services+=(generation-runner generation-sandbox-image)
+  fi
   if [[ "$CSP_SIM_ENABLED" == true ]]; then
     services+=(csp-judge-worker csp-sandbox-image)
   fi
@@ -123,6 +143,12 @@ cache_registry_images_with_local_tags() {
   if [[ "$historical_compose" == *csp-studio* ]]; then
     docker pull "$csp_image"
     docker tag "$csp_image" "dataforge-csp-studio:${tag}"
+  fi
+  if [[ "$historical_compose" == *generation-runner* ]]; then
+    docker pull "${DATAFORGE_REGISTRY_PREFIX}dataforge-generation-runner:${tag}"
+    docker pull "${DATAFORGE_REGISTRY_PREFIX}dataforge-generation-sandbox:${tag}"
+    docker tag "${DATAFORGE_REGISTRY_PREFIX}dataforge-generation-runner:${tag}" "dataforge-generation-runner:${tag}"
+    docker tag "${DATAFORGE_REGISTRY_PREFIX}dataforge-generation-sandbox:${tag}" "dataforge-generation-sandbox:${tag}"
   fi
   docker pull "$DATAFORGE_POSTGRES_IMAGE"
   docker tag "$DATAFORGE_POSTGRES_IMAGE" "postgres:17.10-bookworm"
@@ -237,6 +263,8 @@ backup_database() {
     echo "flyway_version=$flyway_version"
   } > "$destination/manifest.env"
   (cd "$destination" && sha256sum database.dump runtime.tar.gz manifest.env > SHA256SUMS)
+  touch "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success"
+  chmod 644 "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success"
   echo "备份完成：$destination"
 }
 
@@ -257,6 +285,7 @@ deploy() {
   previous_commit=$(current_deployed_commit)
 
   git -C "$REPO_ROOT" pull --ff-only
+  ensure_execution_secret
   next_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
   prepare_release_images "$next_commit"
   start_database
@@ -270,6 +299,7 @@ deploy() {
 
   if start_tagged_service "$next_commit" csp-studio \
       && wait_for_csp_studio \
+      && start_tagged_service "$next_commit" generation-runner \
       && start_tagged_service "$next_commit" app \
       && wait_for_application \
       && start_optional_judge "$next_commit"; then
@@ -328,6 +358,13 @@ restore_backup() {
   fi
 
   git -C "$REPO_ROOT" switch --detach "$git_commit"
+  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+    ensure_execution_secret
+    if ! uses_registry_images; then
+      compose_tagged "$git_commit" build generation-runner generation-sandbox-image
+    fi
+    start_tagged_service "$git_commit" generation-runner
+  fi
   if ! uses_registry_images; then
     compose_tagged "$git_commit" build app
     if compose_has_csp_studio; then
@@ -359,6 +396,9 @@ import_h2() {
     die "请把旧 runtime 目录放到 $DATAFORGE_MIGRATION_DIR/runtime"
   local tag
   tag=$(git -C "$REPO_ROOT" rev-parse HEAD)
+  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+    ensure_execution_secret
+  fi
   prepare_release_images "$tag"
   start_database
   wait_for_database
@@ -367,6 +407,9 @@ import_h2() {
   DATAFORGE_IMAGE_TAG="$tag" compose --profile tools run --rm importer
   start_tagged_service "$tag" csp-studio
   wait_for_csp_studio || die "迁移完成，但 CSP Paper Studio 服务未通过健康检查"
+  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+    start_tagged_service "$tag" generation-runner
+  fi
   start_tagged_service "$tag" app
   wait_for_application || die "迁移完成，但应用未通过健康检查"
   start_optional_judge "$tag"
