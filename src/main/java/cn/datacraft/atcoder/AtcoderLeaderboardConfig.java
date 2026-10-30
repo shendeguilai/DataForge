@@ -42,6 +42,12 @@ class AtcoderLeaderboardConfig {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name="auto_selected", nullable=false)
+    private boolean autoSelected;
+    boolean isAutoSelected() { return autoSelected; }
+    void setAutoSelected(boolean value) { autoSelected=value; }
+    void selectAutomatically(Instant now) { autoSelected=true;updatedAt=now; }
+
     protected AtcoderLeaderboardConfig() {}
 
     AtcoderLeaderboardConfig(String contestId, String displayTitle, String officialTitle,

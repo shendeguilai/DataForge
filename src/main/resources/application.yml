@@ -59,6 +59,7 @@ dataforge:
     max-markdown-bytes: 2097152
     max-word-bytes: 26214400
   atcoder:
+    weekly-enabled: ${DATAFORGE_ATCODER_WEEKLY_ENABLED:true}
     cookie: ${ATCODER_COOKIE:}
   quiz:
     countdown-seconds: ${QUIZ_COUNTDOWN_SECONDS:3}

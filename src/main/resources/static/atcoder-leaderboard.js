@@ -9,6 +9,7 @@ let currentPage = 1;
 let currentTasks = [];
 let currentEntries = [];
 let currentContestId = new URLSearchParams(location.search).get('contestId') || '';
+let followDefaultContest = !currentContestId;
 let autoRefreshEnabled = false;
 let canManualRefresh = false;
 let problemPollTimer = null;
@@ -27,6 +28,7 @@ board$('#problemButton')?.addEventListener('click', event => {
 window.addEventListener('dataforge:auth-changed', event => setManualRefreshAccess(event.detail));
 window.addEventListener('popstate', () => {
   const contestId = new URLSearchParams(location.search).get('contestId') || '';
+  followDefaultContest = !contestId;
   if (contestId === currentContestId) return;
   currentContestId = contestId;
   currentPage = 1;
@@ -82,9 +84,11 @@ async function loadLeaderboard(manual) {
     autoRefreshEnabled = Boolean(payload.autoRefresh);
     countdown = payload.refreshCooldownSeconds > 0
       ? payload.refreshCooldownSeconds : (payload.refreshAfterSeconds ?? 0);
+    if(followDefaultContest && !autoRefreshEnabled)countdown=60;
     if (manual && payload.refreshCooldownSeconds > 0) showToast(`刷新过于频繁，请等待 ${payload.refreshCooldownSeconds} 秒`);
   } catch (error) {
     if (sequence !== leaderboardSequence || error.name === 'AbortError') return;
+    if(followDefaultContest)countdown=60;
     showNotice(error.message || '排行榜暂时无法读取，当前仍保留上次成功同步的数据。', true);
     if (!currentEntries.length) showBoardState('排行榜读取失败，请稍后重试。');
   } finally {
@@ -133,7 +137,11 @@ function renderProblemButton(data) {
 function startClock() {
   clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
-    if (document.hidden || refreshInFlight || !autoRefreshEnabled) return;
+    if (document.hidden || refreshInFlight) return;
+    if(!autoRefreshEnabled) {
+      if(followDefaultContest && --countdown<=0){countdown=60;loadLeaderboard(false);}
+      return;
+    }
     countdown = Math.max(0, countdown - 1);
     board$('#countdownLabel').textContent = countdown > 0 ? `${countdown} 秒后自动刷新` : '正在自动刷新';
     if (countdown === 0) loadLeaderboard(false);
@@ -164,7 +172,7 @@ function renderLeaderboard(data) {
   if (currentContestId !== contest.id) {
     currentContestId = contest.id || '';
     currentPage = 1;
-    updateContestUrl(currentContestId, true);
+    if(!followDefaultContest)updateContestUrl(currentContestId, true);
   }
   board$('#contestTitle').textContent = contest.title || contest.id || 'AtCoder 实时排行榜';
   setContestState(statusText(contest.status), String(contest.status || 'unknown').toLowerCase());
@@ -205,6 +213,7 @@ function renderContestSelector(contests, selectedId) {
 
 function selectContest(contestId) {
   if (!contestId || contestId === currentContestId) return;
+  followDefaultContest = false;
   currentContestId = contestId;
   currentPage = 1;
   currentTasks = [];
@@ -235,7 +244,7 @@ function renderRefreshMode(data, contest) {
 }
 
 function withContest(path) {
-  if (!currentContestId) return path;
+  if (followDefaultContest || !currentContestId) return path;
   return `${path}${path.includes('?') ? '&' : '?'}contestId=${encodeURIComponent(currentContestId)}`;
 }
 

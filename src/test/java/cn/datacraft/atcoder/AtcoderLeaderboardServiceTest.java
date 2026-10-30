@@ -96,6 +96,19 @@ class AtcoderLeaderboardServiceTest {
         assertThat(second.entries().get(1).movement().type()).isEqualTo("DOWN");
     }
 
+    @Test void weeklySelectionDoesNotNeedOpenStandingsAndOverridesFutureManualContests() {
+        var c=new AtcoderContestSchedule.Candidate("abc482","ABC 482",clock.instant().plusSeconds(3600),clock.instant().plusSeconds(9600));
+        service.selectWeeklyContest(c);
+        assertThat(service.getConfig().contestId()).isEqualTo("abc482");
+        assertThat(service.currentLeaderboard().error()).isNull();
+        assertThat(service.currentLeaderboard().contest().status()).isEqualTo("UPCOMING");
+        verify(gateway,never()).fetchStandings(any());
+        var future=new AtcoderLeaderboardConfig("abc499","future","future",clock.instant().plusSeconds(999999),null,"[]",clock.instant());
+        configured.put("abc499",future);
+        assertThat(service.getConfig().contestId()).isEqualTo("abc482");
+        assertThat(service.getConfig("abc499").contestId()).isEqualTo("abc499");
+    }
+
     @Test
     void reusesFreshCacheAndFallsBackToLastSuccessfulSnapshot() {
         when(participants.findAllByOrderBySortOrderAscIdAsc()).thenReturn(List.of(participant(1L, "小明", "Alice", 1)));

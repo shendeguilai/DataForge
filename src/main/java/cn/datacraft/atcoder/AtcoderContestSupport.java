@@ -30,7 +30,8 @@ final class AtcoderContestSupport {
 
     static List<AtcoderLeaderboardConfig> sorted(AtcoderLeaderboardConfigRepository configs) {
         Comparator<AtcoderLeaderboardConfig> order = Comparator
-                .comparing(AtcoderLeaderboardConfig::getStartAt,
+                .comparing(AtcoderLeaderboardConfig::isAutoSelected, Comparator.reverseOrder())
+                .thenComparing(AtcoderLeaderboardConfig::getStartAt,
                         Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(AtcoderLeaderboardConfig::getUpdatedAt,
                         Comparator.nullsLast(Comparator.reverseOrder()))

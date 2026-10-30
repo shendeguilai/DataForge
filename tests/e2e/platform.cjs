@@ -43,10 +43,9 @@ async function api(page,url,method='GET',data){
   await page.locator('[data-portal-auth="login"]').click();
   await page.locator('#portalLoginUsername').fill('admin');await page.locator('#portalLoginPassword').fill('browser-test-password');
   await page.locator('#portalLoginForm button[type="submit"]').click();
-  await page.locator('#teacherWorkbench').waitFor({state:'visible'});
-  await page.locator('#learningSection summary').first().click();
-  await page.getByText('添加班级和学生后，这里会显示学习记录。',{exact:true}).waitFor();
-  console.log('PASS login, teacher workbench and empty learning state');
+  await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
+  assert.equal(await page.locator('#teacherWorkbench').count(),0);
+  console.log('PASS login and tools without teacher workbench');
 
   await page.goto(base+'/admin.html');await page.locator('[data-panel="tools"]').click();
   await page.locator('#toolOrderList li').first().getByRole('button',{name:'可达 OJ 作业跟踪下移',exact:true}).click();
@@ -59,7 +58,7 @@ async function api(page,url,method='GET',data){
   await page.reload();await page.getByText('暂时无法确认登录状态，请检查网络后刷新重试。',{exact:true}).waitFor();
   await page.locator('[data-tool-id="homework"] button').click();
   assert.equal(await page.locator('#portalAuthView').isHidden(),true,'network failure must not open a login prompt');
-  await page.unroute('**/api/auth/me');await page.reload();await page.locator('#teacherWorkbench').waitFor({state:'visible'});
+  await page.unroute('**/api/auth/me');await page.reload();await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
   console.log('PASS transient network failure does not masquerade as logout');
 
   await api(page,'/api/tools/kedaoj-homework/settings','PUT',{credential:'fake-e2e-sid',domain:'system',autoUpdate:false});
@@ -100,17 +99,6 @@ async function api(page,url,method='GET',data){
   await studentPage.close();
   console.log('PASS streamed data upload, student session recovery, submission and published results');
 
-  await page.goto(base+'/tools.html');await page.locator('#teacherWorkbench').waitFor({state:'visible'});
-  await page.locator('#learningSection summary').first().click();
-  await page.getByText('测试同学 · UID 42',{exact:false}).first().click();
-  await page.locator('[data-link-uid="42"]').selectOption(cspStudent.id);
-  await page.getByText('维护题目知识点标签',{exact:true}).click();await page.locator('[data-tag-key="system:32"]').fill('模拟题');
-  await page.locator('#saveLearning').click();await page.getByText('已保存，统计已更新。',{exact:true}).waitFor();
-  await page.getByText('测试同学 · UID 42',{exact:false}).first().click();
-  assert.match(await page.locator('#learningBody').textContent(),/模拟题：1\/1/);
-  assert.match(await page.locator('#learningBody').textContent(),/浏览器模拟考/);
-  console.log('PASS explicit student linkage, confirmed topic tags and published scores');
-
   await api(page,'/api/admin/atcoder-leaderboard/config','PUT',{contestId:'abc999',displayTitle:'测试比赛'});
   await page.goto(base+'/admin.html?contestId=abc999');await page.locator('[data-panel="leaderboard"]').click();
   await page.locator('[data-manual-translation="abc999_a"]').click();
@@ -121,7 +109,20 @@ async function api(page,url,method='GET',data){
   await page.locator('#statementContent .katex').first().waitFor({state:'attached'});
   console.log('PASS manual translation import and formula rendering');
 
-  await page.goto(base+'/tools.html');await page.locator('#teacherWorkbench').waitFor({state:'visible'});
+  await page.goto(base+'/atcoder-leaderboard.html');
+  await page.waitForFunction(()=>document.querySelector('#contestSelector')?.value==='abc999');
+  assert.equal(new URL(page.url()).searchParams.has('contestId'),false);
+  await api(page,'/api/admin/atcoder-leaderboard/config','PUT',{contestId:'abc998',displayTitle:'自动切换测试'});
+  await page.evaluate(()=>loadLeaderboard(false));
+  await page.waitForFunction(()=>document.querySelector('#contestSelector')?.value==='abc998');
+  await page.locator('#contestSelector').selectOption('abc999');
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('contestId')==='abc999');
+  await api(page,'/api/admin/atcoder-leaderboard/config','PUT',{contestId:'abc997',displayTitle:'下一场测试'});
+  await page.evaluate(()=>loadLeaderboard(false));
+  assert.equal(await page.locator('#contestSelector').inputValue(),'abc999');
+  console.log('PASS default leaderboard follows selection while explicit history remains pinned');
+
+  await page.goto(base+'/tools.html');await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
 
   await page.locator('#openGenerator').click();
   const generator=page.frameLocator('#generatorFrame');
@@ -142,8 +143,8 @@ async function api(page,url,method='GET',data){
   const me=await api(page,'/api/auth/me');assert.equal(me.username,'admin');
   await stop();await start();await page.reload();
   assert.equal((await api(page,'/api/auth/me')).username,'admin');
-  await page.locator('#teacherWorkbench').waitFor({state:'visible'});
-  await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#teacherWorkbench').waitFor({state:'visible'});
+  await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
+  await page.setViewportSize({width:390,height:844});await page.reload();await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),'mobile horizontal overflow');
   await page.screenshot({path:path.join(temporary,'tools-mobile.png'),fullPage:true});
   console.log('PASS server restart keeps login and mobile tool layout');

@@ -49,6 +49,43 @@ class HomeworkIntegrationTest {
         service.addStudents(owner, c.id(), List.of(new StudentInput("小明", 42)));
         return service.createAssignment(owner, new CreateAssignment(c.id(), "第 1 周", "system", time.minus(Duration.ofDays(7)), time.minusSeconds(1), List.of("P0032")));
     }
+    @Test void heartbeatIsDueAfterHalfAnHourEvenWithManualHomeworkUpdates() {
+        service.saveSettings(owner,new SettingsInput(null,"system",false));
+        clearInvocations(oj);
+        service.keepCredentialsAlive();
+        verify(oj,never()).identity(eq(owner),anyString(),anyString());
+        var later=new HomeworkService(repository,json,cipher,oj,manager,Runnable::run,
+                Clock.fixed(time.plusSeconds(1801),ZoneOffset.UTC),true);
+        later.keepCredentialsAlive();later.keepCredentialsAlive();
+        verify(oj,times(1)).identity(eq(owner),anyString(),anyString());
+        assertThat(later.settings(owner).checkedAt()).isEqualTo(time.plusSeconds(1801));
+        assertThat(later.settings(owner).autoUpdate()).isFalse();
+        later.clearCredential(owner);later.keepCredentialsAlive();
+        verify(oj,times(1)).identity(eq(owner),anyString(),anyString());
+    }
+    @Test void expiredSidPausesHeartbeatUntilReconfigured() {
+        var later=new HomeworkService(repository,json,cipher,oj,manager,Runnable::run,
+                Clock.fixed(time.plusSeconds(1801),ZoneOffset.UTC),true);
+        when(oj.identity(eq(owner),anyString(),anyString())).thenThrow(new KedaojException("AUTH_REQUIRED","请更新凭据"));
+        clearInvocations(oj);
+        later.keepCredentialsAlive();later.keepCredentialsAlive();
+        verify(oj,times(1)).identity(eq(owner),anyString(),anyString());
+        assertThat(later.settings(owner).connectionState()).isEqualTo("AUTH_REQUIRED");
+        when(oj.identity(eq(owner),anyString(),anyString())).thenReturn(new KedaojGateway.Identity(10766,"teacher"));
+        later.saveSettings(owner,new SettingsInput("new-sid","system",false));
+        assertThat(later.settings(owner).connectionState()).isEqualTo("CONNECTED");
+    }
+    @Test void heartbeatNetworkFailureKeepsCredentialAndDoesNotAffectAnotherOwner() {
+        String other=owner+"other";
+        service.saveSettings(other,new SettingsInput("other-secret","system",false));
+        when(oj.identity(eq(owner),anyString(),anyString())).thenThrow(new KedaojException("NETWORK_ERROR","网络失败"));
+        var later=new HomeworkService(repository,json,cipher,oj,manager,Runnable::run,
+                Clock.fixed(time.plusSeconds(1801),ZoneOffset.UTC),true);
+        later.keepCredentialsAlive();
+        assertThat(later.settings(owner).configured()).isTrue();
+        assertThat(later.settings(owner).connectionState()).isEqualTo("NETWORK_ERROR");
+        assertThat(later.settings(other).connectionState()).isEqualTo("CONNECTED");
+    }
     @Test void snapshotsRosterAndPersistsResultsAcrossServiceRecreation() {
         var a = assignment(); var student = a.students().get(0);
         service.removeStudent(owner, a.classId(), student.id());

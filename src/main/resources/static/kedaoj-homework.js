@@ -143,7 +143,7 @@
   function renderSettings() {
     const s = state.settings; if (!s) return;
     $('#defaultDomain').value = s.domain; $('#autoUpdate').value = String(s.autoUpdate);
-    $('#connectionState').textContent = s.connectionState === 'CONNECTED' ? '已连接' : s.configured ? '需要验证' : '尚未配置';
+    $('#connectionState').textContent = s.connectionState === 'CONNECTED' ? '已连接' : s.connectionState === 'AUTH_REQUIRED' ? 'SID 已失效，请重新配置' : s.configured ? '需要验证' : '尚未配置';
     $('#connectionInfo').textContent = `${s.ojUsername ? `OJ 账号：${s.ojUsername}（UID ${s.ojUid}） · ` : ''}${s.message || '请录入登录凭据'}${s.checkedAt ? ' · ' + date(s.checkedAt) : ''}`;
     $('#verifyConnection').disabled = !s.configured; $('#clearCredential').disabled = !s.configured;
   }

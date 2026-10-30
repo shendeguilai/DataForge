@@ -45,6 +45,7 @@
     <div class="panel hw-board"><div class="hw-board-title"><h2>班级学生</h2><span class="hw-muted">名单调整仅影响之后新建的作业</span></div><div class="hw-table-wrap"><table id="rosterTable"><thead><tr><th>学生姓名</th><th>OJ UID</th><th>OJ 用户名</th><th>操作</th></tr></thead><tbody></tbody></table></div></div>
   </section>
   <section id="connection" role="tabpanel" aria-labelledby="tab-connection" hidden>
+    <p class="hw-muted">保存 SID 后，服务器每半小时尝试一次连接心跳，关闭网页也会执行，与作业自动更新开关无关。心跳不能阻止 OJ 固定到期或强制退出；失效后暂停，请重新录入 SID。</p>
     <form id="settingsForm" class="panel hw-form"><div class="hw-board-title"><div><h2>连接可达 OJ</h2><p class="hw-muted">凭据由 DataForge 后台加密保存，仅用于读取 OJ 数据。</p></div><span class="hw-phase" id="connectionState">尚未配置</span></div><div class="hw-form-grid"><label>默认题库域<input id="defaultDomain" value="system" required pattern="[A-Za-z0-9_-]{1,64}" maxlength="64"></label><label>自动更新<select id="autoUpdate"><option value="true">每天 00:00 · 北京时间</option><option value="false">仅手动更新</option></select></label><label class="hw-wide">登录 SID 或包含 sid 的 Cookie<input id="credential" type="password" autocomplete="new-password" maxlength="16384" placeholder="首次填写；留空则保留现有凭据"></label></div><p class="hw-muted" id="connectionInfo"></p><div class="hw-actions"><button type="submit" class="primary-btn">保存设置</button><button type="button" class="ghost-btn" id="verifyConnection">验证连接</button><button type="button" class="hw-link" id="clearCredential">清除凭据</button></div></form>
   </section>
 </main>

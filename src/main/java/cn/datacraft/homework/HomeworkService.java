@@ -24,6 +24,8 @@ public class HomeworkService {
     private final KedaojGateway oj;
     private final TransactionTemplate tx;
     private final Executor executor;
+    @Autowired @Qualifier("sidHeartbeatExecutor")
+    private Executor heartbeatExecutor;
     private final Clock clock;
     private final boolean scheduling;
     private final Set<String> executing = ConcurrentHashMap.newKeySet();
@@ -38,6 +40,7 @@ public class HomeworkService {
                     PlatformTransactionManager manager, Executor executor, Clock clock, boolean scheduling) {
         this.repository = repository; this.json = json; this.cipher = cipher; this.oj = oj;
         this.tx = new TransactionTemplate(manager); this.executor = executor; this.clock = clock; this.scheduling = scheduling;
+        this.heartbeatExecutor=executor;
     }
     private Instant now() { return clock.instant(); }
     private Object ownerLock(String owner) { return ownerLocks.computeIfAbsent(owner, k -> new Object()); }
@@ -102,15 +105,41 @@ public class HomeworkService {
         s.checkedAt = now(); s.message = "已验证 OJ 身份";
     }
     public SettingsView verifyConnection(String owner) {
-        Settings config = configuration(owner);
-        try {
-            var identity = oj.identity(owner, sid(config), config.domain);
-            updateSettingsState(owner, s -> connected(s, identity));
-        } catch (KedaojException e) {
-            updateSettingsState(owner, s -> { s.connectionState = e.code(); s.message = e.getMessage(); s.checkedAt = now(); });
-            throw e;
+        synchronized (ownerLock(owner)) {
+            Settings config = configuration(owner);
+            try {
+                var identity = oj.identity(owner, sid(config), config.domain);
+                updateSettingsState(owner, s -> connected(s, identity));
+            } catch (KedaojException e) {
+                updateSettingsState(owner, s -> { s.connectionState = e.code(); s.message = e.getMessage(); s.checkedAt = now(); });
+                throw e;
+            }
+            return settings(owner);
         }
-        return settings(owner);
+    }
+    @Scheduled(fixedDelay=60000, initialDelay=60000)
+    public void keepCredentialsAlive() {
+        if(!scheduling)return;
+        for(var record:repository.findByKind("SETTINGS")) {
+            try {
+                var config=read(record,Settings.class);
+                if(config.encryptedSid==null || "AUTH_REQUIRED".equals(config.connectionState))continue;
+                if(config.checkedAt!=null && config.checkedAt.plusSeconds(1800).isAfter(now()))continue;
+                heartbeatExecutor.execute(()->{
+                    synchronized(ownerLock(record.owner)) {
+                        var latest=configuration(record.owner);
+                        if(latest.encryptedSid==null || "AUTH_REQUIRED".equals(latest.connectionState))return;
+                        if(latest.checkedAt!=null && latest.checkedAt.plusSeconds(1800).isAfter(now()))return;
+                        try {verifyConnection(record.owner);}
+                        catch(KedaojException ignored) { /* Verification persisted the safe upstream status. */ }
+                        catch(RuntimeException ignored) {
+                            updateSettingsState(record.owner,s->{s.connectionState="CHECK_FAILED";
+                                s.message="心跳检查失败，请验证连接或重新录入凭据";s.checkedAt=now();});
+                        }
+                    }
+                });
+            } catch(RuntimeException ignored) { /* Isolate owner errors and executor saturation. */ }
+        }
     }
     private void updateSettingsState(String owner, java.util.function.Consumer<Settings> action) {
         synchronized (ownerLock(owner)) {

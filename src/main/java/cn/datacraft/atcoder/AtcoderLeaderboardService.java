@@ -147,6 +147,18 @@ public class AtcoderLeaderboardService {
         return participants.findAllByOrderBySortOrderAscIdAsc().stream().map(this::toParticipantView).toList();
     }
 
+    @Transactional
+    public void selectWeeklyContest(AtcoderContestSchedule.Candidate candidate) {
+        var all=configs.findAll();
+        var selected=configs.findByContestIdIgnoreCase(candidate.id()).orElseGet(()->new AtcoderLeaderboardConfig(
+                candidate.id(),candidate.title(),candidate.title(),candidate.start(),candidate.end(),"[]",clock.instant()));
+        // Do not replace saved tasks, translation data, custom titles or participants.
+        all.forEach(c->c.setAutoSelected(false));configs.saveAll(all);
+        selected.update(selected.getContestId(),selected.getDisplayTitle(),candidate.title(),
+                candidate.start(),candidate.end(),selected.getTasksJson(),clock.instant());
+        selected.selectAutomatically(clock.instant());configs.saveAndFlush(selected);
+    }
+
     public ParticipantView addParticipant(String rawDisplayName, String rawUsername) {
         String displayName = normalizeDisplayName(rawDisplayName);
         String username = normalizeUsername(rawUsername);
@@ -325,6 +337,8 @@ public class AtcoderLeaderboardService {
                                         boolean refreshing, int cooldown) {
         AtcoderStandings.Snapshot standings = readStandings(snapshot);
         if (standings == null) {
+            if("UPCOMING".equals(AtcoderContestSupport.status(config,clock.instant())) && snapshot==null)
+                return errorLeaderboard(config,null,cooldown);
             String error = snapshot == null ? null : snapshot.getLastError();
             return errorLeaderboard(config,
                     error == null ? "尚无可用的排行榜快照" : error, cooldown);
