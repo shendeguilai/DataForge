@@ -70,6 +70,8 @@ CSP 复赛模拟同样从“实用工具”进入。学生通过教师分享的�
 
 生产服务器无法访问 Docker Hub 时，可使用 [GitHub Actions + GHCR 成品镜像部署](docs/GHCR_IMAGE_DEPLOYMENT.md)，生产机不再执行基础镜像拉取和应用构建。
 
+当前阿里云服务器可配置 [GitHub 一键部署](docs/ONE_CLICK_DEPLOYMENT.md)：检查和 ACR 镜像同步通过后手动触发，服务器自行备份、更新和检查健康，不需要控制本机浏览器或保持电脑开机。
+
 首次打开会预填“数列求和”演示题，可以不配置 AI 直接体验完整流程。
 
 ## 配置 AI

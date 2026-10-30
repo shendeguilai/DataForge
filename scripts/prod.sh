@@ -112,10 +112,17 @@ uses_registry_images() {
   [[ "$DATAFORGE_IMAGE_SOURCE" == "registry" ]]
 }
 
+compose_has_service() {
+  local profile=$1 service=$2 services
+  services=$(compose --profile "$profile" config --services) || die "无法读取 Compose 服务配置"
+  # Consume the complete output; grep -q can SIGPIPE the Compose process under pipefail.
+  grep -Fx -- "$service" <<< "$services" >/dev/null
+}
+
 prepare_release_images() {
   local tag=$1
   local services=(app csp-studio)
-  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+  if compose_has_service generation-build generation-runner; then
     services+=(generation-runner generation-sandbox-image)
   fi
   if [[ "$CSP_SIM_ENABLED" == true ]]; then
@@ -170,13 +177,13 @@ start_tagged_service() {
 
 start_optional_judge() {
   local tag=$1
-  if [[ "$CSP_SIM_ENABLED" == true ]] && compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+  if [[ "$CSP_SIM_ENABLED" == true ]] && compose_has_service csp-sim csp-judge-worker; then
     compose_tagged "$tag" --profile csp-sim up -d --no-build --pull never --no-deps csp-judge-worker
   fi
 }
 
 stop_optional_judge() {
-  if compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+  if compose_has_service csp-sim csp-judge-worker; then
     compose --profile csp-sim stop csp-judge-worker >/dev/null 2>&1 || true
   fi
 }
@@ -196,7 +203,7 @@ wait_for_database() {
 wait_for_application() {
   local attempts=60
   while (( attempts > 0 )); do
-    if curl --fail --silent "http://127.0.0.1:${PUBLIC_PORT}/actuator/health" | grep -q '"status":"UP"'; then
+    if curl --fail --silent --max-time 5 "http://127.0.0.1:${PUBLIC_PORT}/actuator/health" | grep '"status":"UP"' >/dev/null; then
       return 0
     fi
     sleep 2
@@ -220,7 +227,7 @@ wait_for_csp_studio() {
 }
 
 compose_has_csp_studio() {
-  compose config --services | grep -qx 'csp-studio'
+  compose_has_service generation-build csp-studio
 }
 
 database_has_schema() {
@@ -243,12 +250,12 @@ backup_database() {
   [[ "$backup_id" =~ ^[A-Za-z0-9._-]+$ ]] || die "备份编号包含非法字符"
   local destination="$DATAFORGE_BACKUP_DIR/$backup_id"
   [[ ! -e "$destination" ]] || die "备份已存在：$destination"
-  mkdir -p -- "$destination"
+  mkdir -p -- "$destination" || return 1
 
   compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
     pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom \
-    > "$destination/database.dump"
-  tar --exclude='*.partial' -czf "$destination/runtime.tar.gz" -C "$DATAFORGE_RUNTIME_DIR_HOST" .
+    > "$destination/database.dump" || return 1
+  tar --exclude='*.partial' -czf "$destination/runtime.tar.gz" -C "$DATAFORGE_RUNTIME_DIR_HOST" . || return 1
 
   local deployed_commit flyway_version
   deployed_commit=$(current_deployed_commit)
@@ -261,10 +268,10 @@ backup_database() {
     echo "git_commit=$deployed_commit"
     echo "image_tag=$deployed_commit"
     echo "flyway_version=$flyway_version"
-  } > "$destination/manifest.env"
-  (cd "$destination" && sha256sum database.dump runtime.tar.gz manifest.env > SHA256SUMS)
-  touch "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success"
-  chmod 644 "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success"
+  } > "$destination/manifest.env" || return 1
+  (cd "$destination" && sha256sum database.dump runtime.tar.gz manifest.env > SHA256SUMS) || return 1
+  touch "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success" || return 1
+  chmod 644 "$DATAFORGE_RUNTIME_DIR_HOST/.backup-success" || return 1
   echo "备份完成：$destination"
 }
 
@@ -281,10 +288,15 @@ deploy() {
   require_command git
   require_command curl
   [[ -z $(git -C "$REPO_ROOT" status --porcelain) ]] || die "Git 工作区有未提交改动，拒绝部署"
-  local previous_commit next_commit
+  local previous_commit next_commit pinned=${1:-}
   previous_commit=$(current_deployed_commit)
 
-  git -C "$REPO_ROOT" pull --ff-only
+  if [[ -n "$pinned" ]]; then
+    [[ "$pinned" =~ ^[0-9a-f]{40}$ && $(git -C "$REPO_ROOT" rev-parse HEAD) == "$pinned" ]] ||
+      die "固定版本与服务器代码不一致，拒绝部署"
+  else
+    git -C "$REPO_ROOT" pull --ff-only
+  fi
   ensure_execution_secret
   next_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
   prepare_release_images "$next_commit"
@@ -293,11 +305,8 @@ deploy() {
 
   stop_optional_judge
   compose stop app csp-studio >/dev/null 2>&1 || true
-  if database_has_schema; then
-    backup_database "$(date -u +%Y%m%dT%H%M%SZ)-predeploy"
-  fi
-
-  if start_tagged_service "$next_commit" csp-studio \
+  if backup_before_deploy "$pinned" \
+      && start_tagged_service "$next_commit" csp-studio \
       && wait_for_csp_studio \
       && start_tagged_service "$next_commit" generation-runner \
       && start_tagged_service "$next_commit" app \
@@ -314,11 +323,26 @@ deploy() {
   if uses_registry_images; then
     compose_tagged "$previous_commit" pull app || true
   fi
+  # A failed backup occurs before replacements are started; resume the existing services.
+  compose start csp-studio generation-runner || true
   # 首次引入 CSP 服务时，旧提交没有对应的 Python 镜像。旧版 Java 应用
   # 也不会访问该服务，因此保留当前 CSP 容器，仅恢复旧版 app 镜像。
   compose_tagged "$previous_commit" up -d --no-build --pull never --no-deps app || true
+  # Restart the existing judge container even if failure happened before its upgrade.
+  if [[ "$CSP_SIM_ENABLED" == true ]]; then
+    compose --profile csp-sim start csp-judge-worker || true
+  fi
   wait_for_application || true
   die "部署失败。数据库若已执行不兼容迁移，请使用部署前备份执行 restore"
+}
+
+backup_before_deploy() {
+  if database_has_schema; then
+    backup_database "$(date -u +%Y%m%dT%H%M%SZ)-predeploy"
+  elif [[ -n ${1:-} ]]; then
+    echo "无法确认现有数据库结构，停止一键部署" >&2
+    return 1
+  fi
 }
 
 restore_backup() {
@@ -358,7 +382,7 @@ restore_backup() {
   fi
 
   git -C "$REPO_ROOT" switch --detach "$git_commit"
-  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+  if compose_has_service generation-build generation-runner; then
     ensure_execution_secret
     if ! uses_registry_images; then
       compose_tagged "$git_commit" build generation-runner generation-sandbox-image
@@ -375,7 +399,7 @@ restore_backup() {
     start_tagged_service "$git_commit" csp-studio
     wait_for_csp_studio || die "数据已恢复，但对应 CSP Paper Studio 服务未通过健康检查"
   fi
-  if [[ "$CSP_SIM_ENABLED" == true ]] && compose --profile csp-sim config --services | grep -Fxq csp-judge-worker; then
+  if [[ "$CSP_SIM_ENABLED" == true ]] && compose_has_service csp-sim csp-judge-worker; then
     if uses_registry_images; then
       compose_tagged "$git_commit" pull csp-judge-worker csp-sandbox-image
     else
@@ -396,7 +420,7 @@ import_h2() {
     die "请把旧 runtime 目录放到 $DATAFORGE_MIGRATION_DIR/runtime"
   local tag
   tag=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+  if compose_has_service generation-build generation-runner; then
     ensure_execution_secret
   fi
   prepare_release_images "$tag"
@@ -407,7 +431,7 @@ import_h2() {
   DATAFORGE_IMAGE_TAG="$tag" compose --profile tools run --rm importer
   start_tagged_service "$tag" csp-studio
   wait_for_csp_studio || die "迁移完成，但 CSP Paper Studio 服务未通过健康检查"
-  if compose --profile generation-build config --services | grep -Fxq generation-runner; then
+  if compose_has_service generation-build generation-runner; then
     start_tagged_service "$tag" generation-runner
   fi
   start_tagged_service "$tag" app
@@ -444,6 +468,7 @@ usage() {
 用法：./scripts/prod.sh <command>
 
   deploy                         拉取代码，构建或拉取镜像并部署最新版
+  deploy-release <sha>           部署已检出且通过检查的固定版本（不再次拉取 main）
   backup [backup-id]             备份 PostgreSQL、runtime 和版本清单
   restore <backup-id> --confirm  恢复数据库、runtime 和对应代码版本
   import-h2                      从迁移目录导入旧 H2 与历史 ZIP
@@ -463,7 +488,25 @@ main() {
   cd "$REPO_ROOT"
 
   case ${1:-} in
+    deploy|deploy-release|backup|restore|import-h2)
+      require_command flock
+      if [[ ${DATAFORGE_DEPLOY_LOCK_FD:-} == 9 ]]; then
+        [[ /proc/self/fd/9 -ef "${STATE_FILE}.lock" ]] || die "部署锁描述符无效"
+      else
+        exec 9>"${STATE_FILE}.lock"
+      fi
+      flock -n 9 || die "已有部署或备份正在执行，请稍后重试"
+      ;;
+  esac
+
+  case ${1:-} in
     deploy) deploy ;;
+    deploy-release)
+      [[ $# -eq 2 && "$2" =~ ^[0-9a-f]{40}$ ]] || die "需要完整40位提交号"
+      [[ "$DATAFORGE_IMAGE_SOURCE" == registry ]] || die "一键部署仅支持已发布镜像"
+      DATAFORGE_KEEP_OLD_BACKUPS=true
+      deploy "$2"
+      ;;
     backup)
       start_database
       wait_for_database
@@ -480,4 +523,4 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

@@ -8,6 +8,15 @@ permissions:
   contents: read
 
 jobs:
+  deployment-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployment scripts and safety gates
+        run: |
+          bash -n scripts/prod.sh scripts/setup-one-click.sh deploy/ssh-entry.sh deploy/deploy-release.sh deploy/deploy-worker.sh
+          python3 -m unittest discover -s tests/deploy -p 'test_*.py' -v
   generation-sandbox:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -1,0 +1,79 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "确认备份后更新阿里云生产服务器（服务会短暂重启）"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dataforge-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require explicit main deployment
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          DEPLOY_REF: ${{ github.ref }}
+        run: |
+          test "$CONFIRM" = true
+          test "$DEPLOY_REF" = refs/heads/main
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify exact CI and ACR release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: python3 scripts/check-release.py "$RELEASE_SHA"
+
+  deploy:
+    needs: validate
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Deploy through restricted SSH command
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] && (( 10#$DEPLOY_PORT >= 1 && 10#$DEPLOY_PORT <= 65535 ))
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ -n "$DEPLOY_SSH_KEY" && -n "$DEPLOY_KNOWN_HOSTS" ]]
+          deploy_tmp=$(mktemp -d)
+          trap 'rm -f "$deploy_tmp/key" "$deploy_tmp/known_hosts"; rmdir "$deploy_tmp"' EXIT
+          chmod 700 "$deploy_tmp"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$deploy_tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$deploy_tmp/known_hosts"
+          ssh-keygen -y -P '' -f "$deploy_tmp/key" >/dev/null
+          ssh -F /dev/null -T -i "$deploy_tmp/key" -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$deploy_tmp/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=6 \
+            "dataforge-deploy@$DEPLOY_HOST" "deploy $RELEASE_SHA"
+      - name: Record deployment result
+        if: always()
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          DEPLOY_RESULT: ${{ job.status }}
+        run: |
+          printf '### Production deployment\n\nCommit: %s\n\nResult: %s\n' "$RELEASE_SHA" "$DEPLOY_RESULT" >> "$GITHUB_STEP_SUMMARY"
