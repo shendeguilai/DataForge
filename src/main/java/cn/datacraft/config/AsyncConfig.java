@@ -8,6 +8,12 @@ import java.util.concurrent.Executor;
 
 @Configuration
 public class AsyncConfig {
+    @Bean(name="yuanmaHeartbeatExecutor")
+    public Executor yuanmaHeartbeatExecutor() {
+        ThreadPoolTaskExecutor executor=new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);executor.setMaxPoolSize(1);executor.setQueueCapacity(1);
+        executor.setThreadNamePrefix("yuanma-heartbeat-");executor.initialize();return executor;
+    }
     @Bean(name="sidHeartbeatExecutor")
     public Executor sidHeartbeatExecutor() {
         ThreadPoolTaskExecutor executor=new ThreadPoolTaskExecutor();

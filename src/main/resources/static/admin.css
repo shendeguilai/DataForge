@@ -274,3 +274,7 @@ body.admin-body { background: var(--df-bg); background-image: none; color: var(-
 .translation-reference-content pre, .translation-editable pre { background: var(--df-surface-muted); }
 .translation-editable:focus, .participant-bulk textarea:focus, .translation-manual-body textarea:focus { box-shadow: 0 0 0 3px rgba(63,111,159,.12); }
 @media (max-width: 680px) { .admin-main { margin-left: 16px; margin-right: 16px; padding-top: 32px; } .admin-panel { padding: 18px 14px; } }
+.yuanma-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.yuanma-actions .primary-btn { margin: 0; }
+#yuanmaEnabled { border: 1px solid var(--df-border); border-radius: 9px; padding: 12px; background: var(--df-surface); }
+#yuanmaInsecureNotice { max-width: 650px; line-height: 1.7; overflow-wrap: anywhere; }

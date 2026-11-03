@@ -4,6 +4,8 @@ import cn.datacraft.homework.KedaojGateway;
 import cn.datacraft.homework.HomeworkTypes.*;
 import cn.datacraft.atcoder.AtcoderStandings;
 import cn.datacraft.atcoder.AtcoderStandingsGateway;
+import cn.datacraft.yuanma.YuanmaGateway;
+import cn.datacraft.yuanma.YuanmaException;
 import org.springframework.context.annotation.*;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
@@ -12,6 +14,13 @@ import java.util.*;
 
 /** Only loaded from the test classpath under the explicit e2e profile; never connects to real OJ accounts. */
 public class LocalFixtures {
+    @Component @Primary @Profile("e2e")
+    public static class Yuanma implements YuanmaGateway {
+        public Identity identity(String token) {
+            if (!"fake-browser-token".equals(token)) throw new YuanmaException("AUTH_REQUIRED", "测试凭据无效");
+            return new Identity(42, "test_teacher", "测试教师");
+        }
+    }
     @Component @Primary @Profile("e2e")
     public static class Oj implements KedaojGateway {
         public Identity identity(String owner,String sid,String domain){return new Identity(10766,"test_teacher");}

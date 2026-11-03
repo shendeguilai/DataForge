@@ -12,6 +12,11 @@ import java.util.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(cn.datacraft.yuanma.YuanmaException.class)
+    public ResponseEntity<Map<String, String>> yuanma(cn.datacraft.yuanma.YuanmaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).cacheControl(CacheControl.noStore())
+                .body(Map.of("error", ex.getMessage(), "code", ex.code()));
+    }
     @ExceptionHandler(cn.datacraft.homework.KedaojException.class)
     public ResponseEntity<Map<String, String>> kedaoj(cn.datacraft.homework.KedaojException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).cacheControl(CacheControl.noStore())

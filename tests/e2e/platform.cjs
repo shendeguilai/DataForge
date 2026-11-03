@@ -40,10 +40,12 @@ async function api(page,url,method='GET',data){
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(base);assert.equal(new URL(page.url()).pathname,'/tools.html');
   assert.equal(await page.locator('.module-nav a').filter({hasText:'数据工坊'}).count(),0);
+  await page.waitForFunction(()=>window.DataForgePortal?.state==='anonymous');
   await page.locator('[data-portal-auth="login"]').click();
   await page.locator('#portalLoginUsername').fill('admin');await page.locator('#portalLoginPassword').fill('browser-test-password');
   await page.locator('#portalLoginForm button[type="submit"]').click();
-  await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated');
+  try { await page.waitForFunction(()=>window.DataForgePortal?.state==='authenticated'); }
+  catch (error) { throw new Error('Local test login failed: ' + await page.locator('#portalAuthError').textContent()); }
   assert.equal(await page.locator('#teacherWorkbench').count(),0);
   console.log('PASS login and tools without teacher workbench');
 
@@ -53,6 +55,17 @@ async function api(page,url,method='GET',data){
   await page.goto(base+'/tools.html');await page.waitForFunction(()=>document.querySelector('.portal-grid article')?.dataset.toolId==='csp-sim');
   await page.reload();await page.waitForFunction(()=>document.querySelector('.portal-grid article')?.dataset.toolId==='csp-sim');
   console.log('PASS administrator tool ordering and persistence');
+
+  await page.goto(base+'/admin.html');await page.locator('[data-panel="yuanma"]').click();
+  await page.locator('#yuanmaState').filter({hasText:'尚未配置'}).waitFor();
+  await page.locator('#yuanmaToken').fill('fake-browser-token');await page.locator('#yuanmaForm button[type="submit"]').click();
+  await page.locator('#yuanmaState').filter({hasText:'身份已验证'}).waitFor();
+  assert.equal(await page.locator('#yuanmaToken').inputValue(),'');
+  assert.ok(!JSON.stringify(await api(page,'/api/admin/yuanma-heartbeat')).includes('fake-browser-token'));
+  await page.reload();await page.locator('[data-panel="yuanma"]').click();
+  await page.locator('#yuanmaState').filter({hasText:'身份已验证'}).waitFor();
+  await api(page,'/api/admin/yuanma-heartbeat/credential','DELETE');
+  console.log('PASS administrator source-system heartbeat settings without displaying token');
 
   await page.route('**/api/auth/me',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
   await page.reload();await page.getByText('暂时无法确认登录状态，请检查网络后刷新重试。',{exact:true}).waitFor();

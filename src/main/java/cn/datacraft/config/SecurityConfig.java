@@ -48,7 +48,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/tools/typing/rooms/*/join", "/api/tools/typing/rooms/*/leave").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/tools/quiz/rooms/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/tools/quiz/rooms/*/join", "/api/tools/quiz/rooms/*/leave").permitAll()
-                .requestMatchers("/admin.html", "/admin.js", "/admin.css", "/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/admin.html", "/admin.js", "/admin.css", "/admin-yuanma.js", "/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, ex) -> {
