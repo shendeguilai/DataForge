@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import json
 import pathlib
@@ -21,6 +22,20 @@ def reply(payload, cookie=None, status=200):
 
 
 class YuanmaConfigurationTests(unittest.TestCase):
+    def test_script_syntax_is_valid_for_python36(self):
+        source = (ROOT / "scripts/configure-yuanma-token.py").read_text(encoding="utf-8")
+        ast.parse(source, feature_version=(3, 6))
+
+    def test_uses_python36_compatible_subprocess_options(self):
+        def run(args, input, stdout, stderr, timeout):
+            self.assertIs(stdout, module.subprocess.PIPE)
+            self.assertIs(stderr, module.subprocess.PIPE)
+            self.assertEqual(timeout, 40)
+            return reply({"role": "ADMIN"}, "fake-session")
+        with patch.object(module.subprocess, "run", side_effect=run):
+            status, payload, session = module.call("dataforge-app-1", "/api/auth/login", "POST", {"password": "fake-password"})
+        self.assertEqual((status, session, payload["role"]), (200, "fake-session", "ADMIN"))
+
     def test_secrets_and_session_are_passed_only_through_stdin(self):
         replies = [reply({"role": "ADMIN"}, "fake-session"),
                    reply({"token": "fake-csrf", "headerName": "X-CSRF-TOKEN"}),

@@ -38,7 +38,9 @@ def call(container, path, method="GET", body=None, headers=(), cookie=""):
     args = ['docker', 'exec', '-i', container, 'curl', '--disable', '--noproxy', '*',
             '--silent', '--show-error', '--include', '--connect-timeout', '5', '--max-time', '30', '--config', '-']
     try:
-        result = subprocess.run(args, input=('\n'.join(config) + '\n').encode(), capture_output=True, timeout=40)
+        # The production host ships Python 3.6, which predates capture_output.
+        result = subprocess.run(args, input=('\n'.join(config) + '\n').encode(),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
     except (OSError, subprocess.TimeoutExpired):
         raise ConfigurationError("无法连接应用容器，请确认 Docker 和 DataForge 正在运行") from None
     if result.returncode or len(result.stdout) > 1024 * 1024:
