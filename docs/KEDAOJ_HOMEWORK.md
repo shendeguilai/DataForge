@@ -16,6 +16,10 @@
 
 班级名单之后的修改、移出和重命名不会改写已创建作业保存的名单与班级名称。旧作业仍按原名单统计。
 
+每个班级的周作业按开始时间从晚到早排序（包含归档作业），直接进入页面或切换班级时默认选择排在最上面的作业。手动选择后，后台刷新保留当前选择；带 `assignment` 参数的作业链接仍直接打开指定作业。
+
+如需让新学生参与旧作业，在作业完成表上方点击“将班级新增学生加入本次作业”，预览姓名、UID 和 OJ 用户名后确认。仅加入预览过且仍在所属班级中的 UID，已在作业中的学生不会重复加入，也不会删除旧学生或覆盖旧结果；其他作业不受影响。新增学生先显示“待核验”，点击“手动更新”查询完成情况。没有新增学生时会提示；归档作业需先恢复，更新期间不能加入。每份作业最多保留 500 位学生。
+
 ## 完成判定
 
 - 同一域、同一题目存在可见 AC 即完成，包含开始前和比赛内的 AC；统一显示 `AC`。
@@ -27,7 +31,7 @@
 
 ## 日常操作
 
-- **编辑作业**：可修改名称、时间、题号和域，保留创建时的学生名单。截止时间改变会重新判定补交；同域保留未删除题目的结果，新题或更换域后需要更新。更新中的作业暂不能编辑，归档作业需先恢复。并发修改会提示重新打开编辑。
+- **编辑作业**：可修改名称、时间、题号和域，保留本次已保存的学生名单（含手动加入的新学生）。截止时间改变会重新判定补交；同域保留未删除题目的结果，新题或更换域后需要更新。更新中的作业暂不能编辑，归档作业需先恢复。并发修改会提示重新打开编辑。
 - **复制作业**：预填原题单，时间默认后移 7 天，可选择目标班级。副本按目标班级当前名单创建，完成结果独立保存，不改动原作业。
 - **未完成清单**：点击“复制未完成清单”，预览或修改文字后复制。已确认待完成和待核验分开列出；不会自动发给学生或家长。
 - **每题统计**：题目表头显示已确认 AC 人数，点击表头可查看已完成、待完成和待核验的学生分组。
@@ -55,7 +59,7 @@
 ## 开发与部署
 
 - 新页面：`/kedaoj-homework.html`；API 前缀：`/api/tools/kedaoj-homework`。页面和 API 均需登录。
-- API 包括 `settings`、`settings/verify`、`settings/credential`、`classes`、`students/preview`、班级学生增改删、`assignments`、作业编辑（带 `revision`）、`copy/incomplete/export.xlsx/refresh/retry-failed/archive/restore`、`students/{uid}/overview`、`tasks/active` 和任务状态查询。`refresh?full=true` 请求完整复核。
+- API 包括 `settings`、`settings/verify`、`settings/credential`、`classes`、`students/preview`、班级学生增改删、`assignments`、作业编辑（带 `revision`）、`copy/incomplete/export.xlsx/refresh/retry-failed/archive/restore`、`students/{uid}/overview`、`tasks/active` 和任务状态查询。`GET assignments/{id}/new-students` 预览新增名单和作业版本，`POST assignments/{id}/students` 以 `{revision,uids}` 确认加入；与更新队列共用教师锁，防止同步快照与名单变更重叠。`refresh?full=true` 请求完整复核。
 - 更新接口返回 HTTP 202 与任务 ID；任务状态包括 `QUEUED`、`RUNNING`、`SUCCEEDED`、`PARTIAL`、`FAILED`。设置响应仅包含是否配置、身份和状态，不包含凭据或密文。
 - 新增 Flyway `V8__kedaoj_homework.sql`；生产部署沿用现有 PostgreSQL/Flyway 流程。开发环境 H2 由 JPA 创建数据表。
 - 数据持久化于 `kedaoj_homework_records`，按类型保存连接设置、班级、作业及名单快照、提交摘要和同步任务。无需额外外部服务或这台 Mac 的 SID 代理。

@@ -28,7 +28,7 @@
       ui?.setBusy(button, true, '处理中…');
       try { await fn(event); } catch (e) { error(e.message, errorSelector); } finally {
         ui?.setBusy(button, false);
-        if (['refreshAssignment', 'archiveAssignment', 'retryFailed', 'fullRefresh'].includes(button?.id)) renderBoard();
+        if (['refreshAssignment', 'archiveAssignment', 'retryFailed', 'fullRefresh', 'addClassStudents', 'confirmAssignmentStudents'].includes(button?.id)) renderBoard();
         if (button?.id === 'clearCredential' || button?.id === 'verifyConnection') {
           $('#clearCredential').disabled = !state.settings?.configured;
           $('#verifyConnection').disabled = !state.settings?.configured;
@@ -51,7 +51,7 @@
     renderRoster(); renderAssignments();
   }
   function renderAssignments() {
-    const list = state.assignments.filter(a => a.classId === state.classId).sort((a, b) => Number(a.archived) - Number(b.archived));
+    const list = state.assignments.filter(a => a.classId === state.classId).sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt) || a.id.localeCompare(b.id));
     if (!list.some(a => a.id === state.assignmentId)) state.assignmentId = list[0]?.id || '';
     options($('#assignmentFilter'), list.map(a => ({id: a.id, name: a.title + (a.archived ? ' · 已归档' : '')})), state.assignmentId, '暂无周作业');
     renderBoard();
@@ -69,6 +69,10 @@
     $('#assignmentIssueText').textContent = a.error || '存在查询失败项，保留上次成功结果。';
     $('#retryFailed').classList.toggle('hidden', !a.failedCells);
     $('#exportExcel').href = base + '/assignments/' + encodeURIComponent(a.id) + '/export.xlsx';
+    const knownUids = new Set(a.students.map(s => s.uid));
+    const newStudents = (state.classes.find(c => c.id === a.classId)?.students || []).filter(s => !knownUids.has(s.uid));
+    $('#addClassStudents').textContent = '将班级新增学生加入本次作业' + (newStudents.length ? `（${newStudents.length} 人）` : '');
+    $('#addClassStudents').title = a.archived ? '请先恢复跟踪，再加入学生' : '预览班级中尚未加入本次作业的学生';
     renderChanges(a);
     $('#completedStudents').textContent = `${a.completedStudents} / ${a.students.length}`;
     $('#completedCells').textContent = `${a.completedCells} / ${a.students.length * a.problems.length}`;
@@ -170,7 +174,7 @@
     const pending = !!state.submitting, active = pending || !!state.task;
     const task = state.task || (state.lastTask?.assignmentIds?.includes(a?.id) ? state.lastTask : null);
     const panel = $('#taskStatus'); panel.classList.toggle('hidden', !a || !pending && !task);
-    for (const id of ['refreshAssignment', 'editAssignment', 'fullRefresh', 'retryFailed']) $('#' + id).disabled = !a || a.archived || active;
+    for (const id of ['refreshAssignment', 'editAssignment', 'fullRefresh', 'retryFailed', 'addClassStudents']) $('#' + id).disabled = !a || a.archived || active || !!state.addingStudents;
     $('#refreshAssignment').textContent = pending ? '正在提交…' : state.task ? '更新中…' : '手动更新';
     $('#refreshAssignment').setAttribute('aria-busy', String(active));
     if (!a || !pending && !task) return;
@@ -241,14 +245,14 @@
     $('#rosterPreview').innerHTML = '<div class="hw-table-wrap"><table><thead><tr><th>学生姓名</th><th>OJ UID</th><th>OJ 用户名</th></tr></thead><tbody>' + preview.map(s => `<tr><td>${h(s.name)}</td><td>${h(s.uid)}</td><td>${h(s.uname)}</td></tr>`).join('') + '</tbody></table></div>';
     $('#confirmStudents').classList.remove('hidden');
   });
-  $('#confirmStudents').onclick = action(async () => { if (!state.verified || state.verified.classId !== state.classId) throw new Error('请先核对学生用户名'); const c = await request('/classes/' + state.classId + '/students', {method: 'POST', body: JSON.stringify(state.verified.inputs)}); state.classes = state.classes.map(x => x.id === c.id ? c : x); $('#rosterInput').value = ''; resetPreview(); renderRoster(); ui.toast('学生已添加'); });
+  $('#confirmStudents').onclick = action(async () => { if (!state.verified || state.verified.classId !== state.classId) throw new Error('请先核对学生用户名'); const c = await request('/classes/' + state.classId + '/students', {method: 'POST', body: JSON.stringify(state.verified.inputs)}); state.classes = state.classes.map(x => x.id === c.id ? c : x); $('#rosterInput').value = ''; resetPreview(); renderRoster(); renderBoard(); ui.toast('学生已添加'); });
   $('#rosterTable').onclick = action(async e => {
     const student = e.target.closest('[data-student-uid]'); if (student) { await showStudent(student.dataset.studentUid); return; }
     const edit = e.target.closest('[data-edit-student]'), remove = e.target.closest('[data-remove-student]'), c = chosenClass();
     if (edit) { const s = c.students.find(x => x.id === edit.dataset.editStudent); $('#editingStudentId').value = s.id; $('#editingStudentName').value = s.name; $('#editingStudentUid').value = s.uid; $('#editStudentError').classList.add('hidden'); ui.openDialog($('#editStudentDialog'), edit); }
-    if (remove) { const s = c.students.find(x => x.id === remove.dataset.removeStudent); if (!window.confirm(`将“${s.name}”移出班级？旧作业的名单和记录会保留。`)) return; const next = await request('/classes/' + c.id + '/students/' + s.id, {method: 'DELETE'}); state.classes = state.classes.map(x => x.id === c.id ? next : x); renderRoster(); }
+    if (remove) { const s = c.students.find(x => x.id === remove.dataset.removeStudent); if (!window.confirm(`将“${s.name}”移出班级？旧作业的名单和记录会保留。`)) return; const next = await request('/classes/' + c.id + '/students/' + s.id, {method: 'DELETE'}); state.classes = state.classes.map(x => x.id === c.id ? next : x); renderRoster(); renderBoard(); }
   });
-  $('#editStudentForm').onsubmit = action(async () => { const uid = Number($('#editingStudentUid').value); if (!Number.isSafeInteger(uid) || uid <= 0) throw new Error('请填写有效的 OJ UID'); const c = await request('/classes/' + state.classId + '/students/' + $('#editingStudentId').value, {method: 'PUT', body: JSON.stringify({name: $('#editingStudentName').value.trim(), uid})}); state.classes = state.classes.map(x => x.id === c.id ? c : x); ui.closeDialog($('#editStudentDialog')); renderRoster(); }, '#editStudentError');
+  $('#editStudentForm').onsubmit = action(async () => { const uid = Number($('#editingStudentUid').value); if (!Number.isSafeInteger(uid) || uid <= 0) throw new Error('请填写有效的 OJ UID'); const c = await request('/classes/' + state.classId + '/students/' + $('#editingStudentId').value, {method: 'PUT', body: JSON.stringify({name: $('#editingStudentName').value.trim(), uid})}); state.classes = state.classes.map(x => x.id === c.id ? c : x); ui.closeDialog($('#editStudentDialog')); renderRoster(); renderBoard(); }, '#editStudentError');
   $('#settingsForm').onsubmit = action(async () => { const credential = $('#credential').value; try { state.settings = await request('/settings', {method: 'PUT', body: JSON.stringify({credential, domain: $('#defaultDomain').value.trim(), autoUpdate: $('#autoUpdate').value === 'true'})}); renderSettings(); renderBoard(); ui.toast('连接设置已保存'); } finally { $('#credential').value = ''; } });
   $('#verifyConnection').onclick = action(async () => { try { state.settings = await request('/settings/verify', {method: 'POST'}); ui.toast('OJ 身份验证成功'); } finally { state.settings = await request('/settings'); renderSettings(); } });
   $('#clearCredential').onclick = action(async () => { if (!window.confirm('清除 OJ 登录凭据？作业记录会保留，自动更新将无法查询 OJ。')) return; state.settings = await request('/settings/credential', {method: 'DELETE'}); renderSettings(); });
@@ -278,6 +282,30 @@
   $('#newAssignment').onclick = () => openAssignment('create');
   $('#editAssignment').onclick = () => openAssignment('edit');
   $('#copyAssignment').onclick = () => openAssignment('copy');
+  $('#addClassStudents').onclick = action(async () => {
+    const a = current(); if (!a || a.archived || state.task || state.submitting) return;
+    const preview = await request('/assignments/' + a.id + '/new-students');
+    if (state.assignmentId !== a.id) return;
+    state.assignmentRosterPreview = {id: a.id, ...preview};
+    $('#assignmentStudentsTarget').textContent = `作业：${a.title}`;
+    $('#assignmentStudentsSummary').textContent = preview.students.length ? `将加入以下 ${preview.students.length} 位学生：` : '班级当前没有尚未加入本次作业的学生。';
+    $('#assignmentStudentsList').innerHTML = preview.students.length ? '<div class="hw-table-wrap"><table><thead><tr><th>学生姓名</th><th>OJ UID</th><th>OJ 用户名</th></tr></thead><tbody>' + preview.students.map(s => `<tr><td>${h(s.name)}</td><td>${h(s.uid)}</td><td>${h(s.uname)}</td></tr>`).join('') + '</tbody></table></div>' : '';
+    $('#confirmAssignmentStudents').disabled = !preview.students.length;
+    $('#assignmentStudentsError').classList.add('hidden');
+    ui.openDialog($('#assignmentStudentsDialog'), $('#addClassStudents'));
+  });
+  $('#confirmAssignmentStudents').onclick = action(async () => {
+    const preview = state.assignmentRosterPreview;
+    if (!preview?.students.length) throw new Error('请重新预览学生名单');
+    state.addingStudents = true; renderUpdateState(current());
+    try {
+      const a = await request('/assignments/' + preview.id + '/students', {method: 'POST', body: JSON.stringify({revision: preview.revision, uids: preview.students.map(s => s.uid)})});
+      state.assignments = state.assignments.map(x => x.id === a.id ? a : x);
+      state.selected = null; state.selectedProblem = null; state.lastTask = null;
+      state.assignmentRosterPreview = null; ui.closeDialog($('#assignmentStudentsDialog'));
+      ui.toast('学生已加入本次作业，点击“手动更新”查询完成情况');
+    } finally { state.addingStudents = false; renderBoard(); }
+  }, '#assignmentStudentsError');
   $('#newStart').onchange = () => { if ($('#newStart').value && state.assignmentMode !== 'edit') $('#newEnd').value = localBeijing(new Date(Date.parse($('#newStart').value + '+08:00') + 7 * 86400000)); };
   $('#assignmentForm').onsubmit = action(async () => {
     const problemIds = [...new Set($('#newProblems').value.trim().split(/[\s,，;；]+/).filter(Boolean))];

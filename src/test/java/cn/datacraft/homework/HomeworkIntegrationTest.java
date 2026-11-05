@@ -300,6 +300,94 @@ class HomeworkIntegrationTest {
         assertThat(changedDomain.cells()).isEmpty(); assertThat(changedDomain.unknownCells()).isEqualTo(1); assertThat(changedDomain.syncedAt()).isNull();
         assertThat(service.assignment(owner, a.id()).students()).hasSize(1);
     }
+    @Test void addsOnlyPreviewedNewUidsPreservesOldSnapshotAndResultsAndIsSafeToRetry() throws Exception {
+        var a = assignment();
+        when(oj.records(eq(owner), anyString(), anyString(), anyLong(), anyLong(), any())).thenAnswer(i ->
+                List.of(new Submission("6ad4457d2b71ec54920761b8", "system", i.getArgument(3), 32, 1, 100, time.minusSeconds(60), "")));
+        service.refresh(owner, a.id()); service.dispatch();
+        var original = service.assignment(owner, a.id());
+        var another = service.createAssignment(owner, new CreateAssignment(a.classId(), "不变的另一份作业", "system", a.startAt(), a.endAt(), List.of("P0032")));
+        service.removeStudent(owner, a.classId(), a.students().get(0).id());
+        service.addStudents(owner, a.classId(), List.of(new StudentInput("重新加入班级的小明", 42), new StudentInput("小红", 99)));
+        var preview = service.previewAssignmentStudents(owner, a.id());
+        assertThat(preview.students()).extracting(Student::uid).containsExactly(99L);
+        service.addStudents(owner, a.classId(), List.of(new StudentInput("预览后才入班", 100)));
+        clearInvocations(oj);
+        var input = new AddAssignmentStudents(preview.revision(), List.of(99L));
+        var added = service.addAssignmentStudents(owner, a.id(), input);
+        verifyNoInteractions(oj);
+        assertThat(added.students()).extracting(Student::uid).containsExactly(42L, 99L);
+        assertThat(added.students().get(0)).isEqualTo(a.students().get(0));
+        assertThat(json.writeValueAsString(added.cells().get("42:32"))).isEqualTo(json.writeValueAsString(original.cells().get("42:32")));
+        assertThat(added.cells().get("99:32").status).isEqualTo("UNKNOWN");
+        assertThat(added.cells().get("99:32").error).isNull();
+        assertThat(added.completedStudents()).isEqualTo(1); assertThat(added.unknownCells()).isEqualTo(1);
+        assertThat(added.failedCells()).isZero(); assertThat(added.syncedAt()).isNull(); assertThat(added.lastChange()).isNull();
+        assertThat(added.revision()).isEqualTo(1);
+        var repeated = service.addAssignmentStudents(owner, a.id(), input);
+        assertThat(repeated.students()).hasSize(2); assertThat(repeated.revision()).isEqualTo(1);
+        assertThat(service.assignment(owner, another.id()).students()).extracting(Student::uid).containsExactly(42L);
+        assertThat(service.previewAssignmentStudents(owner, a.id()).students()).extracting(Student::uid).containsExactly(100L);
+        var task = service.refresh(owner, a.id()); assertThat(task.totalCells()).isEqualTo(2); service.dispatch();
+        assertThat(service.assignment(owner, a.id()).completedStudents()).isEqualTo(2);
+        assertThat(service.assignment(owner, a.id()).unknownCells()).isZero();
+    }
+    @Test void newRosterEndpointsEnforceOwnershipAndAcceptConfirmedStudents() throws Exception {
+        var a = assignment(); service.addStudents(owner, a.classId(), List.of(new StudentInput("小红", 99)));
+        String path = "/api/tools/kedaoj-homework/assignments/" + a.id();
+        String input = "{\"revision\":0,\"uids\":[99]}";
+        mvc.perform(get(path + "/new-students")).andExpect(status().isUnauthorized());
+        mvc.perform(get(path + "/new-students").with(user("other"))).andExpect(status().isNotFound());
+        mvc.perform(post(path + "/students").with(user("other")).contentType("application/json").content(input)).andExpect(status().isNotFound());
+        mvc.perform(get(path + "/new-students").with(user(owner))).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")).andExpect(jsonPath("$.revision").value(0))
+                .andExpect(jsonPath("$.students.length()").value(1)).andExpect(jsonPath("$.students[0].uid").value(99));
+        mvc.perform(post(path + "/students").with(user(owner)).contentType("application/json").content(input))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.students.length()").value(2)).andExpect(jsonPath("$.revision").value(1));
+        mvc.perform(post(path + "/students").with(user(owner)).contentType("application/json").content(input))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.students.length()").value(2));
+    }
+    @Test void rejectsRosterChangesForQueuedRunningAndArchivedAssignments() {
+        var a = assignment(); service.addStudents(owner, a.classId(), List.of(new StudentInput("小红", 99)));
+        var input = new AddAssignmentStudents(0, List.of(99L));
+        service.refresh(owner, a.id());
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), input)).hasMessageContaining("正在更新");
+        when(oj.records(eq(owner), anyString(), anyString(), anyLong(), anyLong(), any())).thenAnswer(i -> {
+            assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), input)).hasMessageContaining("正在更新");
+            return List.of();
+        });
+        service.dispatch(); assertThat(service.assignment(owner, a.id()).students()).hasSize(1);
+        service.archive(owner, a.id(), true);
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), input)).hasMessageContaining("恢复跟踪");
+        service.archive(owner, a.id(), false);
+        assertThat(service.addAssignmentStudents(owner, a.id(), input).students()).hasSize(2);
+    }
+    @Test void rejectsStaleRosterConfirmationRemovedStudentsAndStudentsFromAnotherClass() {
+        var a = assignment(); var c = service.addStudents(owner, a.classId(), List.of(new StudentInput("小红", 99)));
+        var preview = service.previewAssignmentStudents(owner, a.id());
+        var edited = service.editAssignment(owner, a.id(), new CreateAssignment(a.classId(), "改名", a.domain(), a.startAt(), a.endAt(), List.of("P0032")), a.revision());
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), new AddAssignmentStudents(preview.revision(), List.of(99L))))
+                .hasMessageContaining("作业已改变");
+        service.removeStudent(owner, c.id(), c.students().stream().filter(s -> s.uid() == 99).findFirst().orElseThrow().id());
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), new AddAssignmentStudents(edited.revision(), List.of(99L))))
+                .hasMessageContaining("班级名单已改变");
+        var other = service.saveClass(owner, null, new ClassInput("另一个班"));
+        service.addStudents(owner, other.id(), List.of(new StudentInput("其他班学生", 77)));
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), new AddAssignmentStudents(edited.revision(), List.of(77L))))
+                .hasMessageContaining("班级名单已改变");
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), new AddAssignmentStudents(edited.revision(), List.of(42L, 42L))))
+                .hasMessageContaining("重新预览");
+        assertThat(service.assignment(owner, a.id()).students()).hasSize(1);
+    }
+    @Test void keepsRemovedStudentsAndRejectsAdditionsBeyondAssignmentCapacity() {
+        var a = assignment(); service.removeStudent(owner, a.classId(), a.students().get(0).id());
+        List<StudentInput> inputs = java.util.stream.LongStream.range(100, 600).mapToObj(uid -> new StudentInput("学生" + uid, uid)).toList();
+        service.addStudents(owner, a.classId(), inputs);
+        assertThatThrownBy(() -> service.addAssignmentStudents(owner, a.id(), new AddAssignmentStudents(0, inputs.stream().map(StudentInput::uid).toList())))
+                .hasMessageContaining("500");
+        assertThat(service.assignment(owner, a.id()).students()).extracting(Student::uid).containsExactly(42L);
+        assertThat(service.assignment(owner, a.id()).revision()).isZero();
+    }
     private String encodeTask(SyncTask task) {
         try { return json.writeValueAsString(task); } catch (Exception e) { throw new AssertionError(e); }
     }

@@ -28,6 +28,7 @@ class HomeworkPersistenceTest {
         var oj = mock(KedaojGateway.class);
         when(oj.identity(anyString(), anyString(), anyString())).thenReturn(new KedaojGateway.Identity(10766, "teacher"));
         when(oj.user(anyString(), anyString(), anyString(), eq(42L))).thenReturn(new KedaojGateway.Identity(42, "student"));
+        when(oj.user(anyString(), anyString(), anyString(), eq(99L))).thenReturn(new KedaojGateway.Identity(99, "new_student"));
         when(oj.problem(anyString(), anyString(), anyString(), eq("P0032"))).thenReturn(new Problem("P0032", 32, "题目"));
         when(oj.records(anyString(), anyString(), anyString(), eq(42L), eq(32L), any())).thenReturn(List.of(
                 new Submission("6ad4457d2b71ec54920761b8", "system", 42, 32, 1, 100, Instant.parse("2026-09-01T00:00:00Z"), "")));
@@ -43,11 +44,17 @@ class HomeworkPersistenceTest {
             assertThat(s.task("teacher", taskId).state()).isEqualTo("QUEUED");
             assertThat(s.task("teacher", taskId).totalCells()).isEqualTo(1); s.dispatch();
             assertThat(s.assignment("teacher", assignmentId).completedStudents()).isEqualTo(1);
+            var a = s.assignment("teacher", assignmentId);
+            s.addStudents("teacher", a.classId(), List.of(new StudentInput("新同学", 99)));
+            s.addAssignmentStudents("teacher", assignmentId, new AddAssignmentStudents(a.revision(), List.of(99L)));
             s.archive("teacher", assignmentId, true);
         }
         try (var third = new SpringApplicationBuilder(DataForgeApplication.class).web(WebApplicationType.NONE).run(args)) {
             var s = service(third, oj); var a = s.assignment("teacher", assignmentId);
             assertThat(a.archived()).isTrue(); assertThat(a.cells().get("42:32").status).isEqualTo("AC");
+            assertThat(a.students()).extracting(Student::uid).containsExactly(42L, 99L);
+            assertThat(a.cells().get("99:32").status).isEqualTo("UNKNOWN"); assertThat(a.unknownCells()).isEqualTo(1);
+            assertThat(a.revision()).isEqualTo(1);
             assertThat(s.task("teacher", taskId).state()).isEqualTo("SUCCEEDED");
             assertThat(s.task("teacher", taskId).processedCells()).isEqualTo(1);
         }

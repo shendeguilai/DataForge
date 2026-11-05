@@ -255,6 +255,43 @@ public class HomeworkService {
     public AssignmentView copyAssignment(String owner, String id, CreateAssignment input) {
         require(owner, id, "ASSIGNMENT"); return createAssignment(owner, input);
     }
+    public AssignmentRosterPreview previewAssignmentStudents(String owner, String id) {
+        var a = read(require(owner, id, "ASSIGNMENT"), Assignment.class);
+        var c = read(require(owner, a.classId, "CLASS"), SchoolClass.class);
+        Set<Long> existing = new HashSet<>(a.students.stream().map(Student::uid).toList());
+        return new AssignmentRosterPreview(a.revision, c.students.stream().filter(s -> !existing.contains(s.uid())).toList());
+    }
+    public AssignmentView addAssignmentStudents(String owner, String id, AddAssignmentStudents input) {
+        require(owner, id, "ASSIGNMENT");
+        if (input == null || input.uids() == null || input.uids().isEmpty() || input.uids().size() > 500
+                || input.uids().stream().anyMatch(uid -> uid == null || uid <= 0)
+                || new HashSet<>(input.uids()).size() != input.uids().size())
+            throw new IllegalArgumentException("请重新预览要加入的学生名单");
+        var settings = settingsRecord(owner);
+        return tx.execute(t -> {
+            // Share the enqueue lock so a roster cannot change after a sync takes its snapshot.
+            repository.lock(settings.id).orElseThrow();
+            var r = repository.lock(require(owner, id, "ASSIGNMENT").id).orElseThrow();
+            var a = read(r, Assignment.class);
+            if (a.archived) throw new IllegalArgumentException("请先恢复跟踪，再向归档作业加入学生");
+            Set<Long> existing = new HashSet<>(a.students.stream().map(Student::uid).toList());
+            Set<Long> requested = new LinkedHashSet<>(input.uids()); requested.removeAll(existing);
+            // Retrying a successful request is harmless, including after its response was lost.
+            if (requested.isEmpty()) return view(r, a);
+            if (a.revision != input.revision()) throw new IllegalArgumentException("作业已改变，请重新预览后再加入学生");
+            var active = repository.findByActiveKey("sync:" + owner);
+            if (active.isPresent() && read(active.get(), SyncTask.class).assignmentIds.contains(id))
+                throw new IllegalArgumentException("这份作业正在更新，请结束后再加入学生");
+            var c = read(repository.lock(require(owner, a.classId, "CLASS").id).orElseThrow(), SchoolClass.class);
+            List<Student> added = c.students.stream().filter(s -> requested.contains(s.uid())).toList();
+            if (added.size() != requested.size()) throw new IllegalArgumentException("班级名单已改变，请重新预览后再加入学生");
+            if (a.students.size() + added.size() > 500) throw new IllegalArgumentException("加入后超过每份作业最多 500 位学生的限制");
+            a.students.addAll(added);
+            for (Student s : added) for (Problem p : a.problems) a.cells.put(cellKey(s.uid(), p.docId()), new Cell());
+            a.revision++; a.syncedAt = null; a.lastChange = null;
+            return view(write(r, a), a);
+        });
+    }
     public AssignmentView editAssignment(String owner, String id, CreateAssignment input, long expectedRevision) {
         var original = read(require(owner, id, "ASSIGNMENT"), Assignment.class);
         if (original.archived) throw new IllegalArgumentException("请先恢复跟踪，再编辑归档作业");

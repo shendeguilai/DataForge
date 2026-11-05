@@ -35,6 +35,10 @@ public class HomeworkController {
             @RequestParam long revision, @RequestBody CreateAssignment input) { return service.editAssignment(owner(p), id, input, revision); }
     @PostMapping("/assignments/{id}/copy") @ResponseStatus(HttpStatus.CREATED)
     public AssignmentView copy(Principal p, @PathVariable String id, @RequestBody CreateAssignment input) { return service.copyAssignment(owner(p), id, input); }
+    @GetMapping("/assignments/{id}/new-students")
+    public AssignmentRosterPreview previewAssignmentStudents(Principal p, @PathVariable String id) { return service.previewAssignmentStudents(owner(p), id); }
+    @PostMapping("/assignments/{id}/students")
+    public AssignmentView addAssignmentStudents(Principal p, @PathVariable String id, @RequestBody AddAssignmentStudents input) { return service.addAssignmentStudents(owner(p), id, input); }
     @GetMapping("/assignments/{id}/incomplete") public IncompleteReport incomplete(Principal p, @PathVariable String id) { return service.incomplete(owner(p), id); }
     @GetMapping("/students/{uid}/overview") public StudentOverview student(Principal p, @PathVariable long uid) { return service.studentOverview(owner(p), uid); }
     @GetMapping("/assignments/{id}/export.xlsx") public ResponseEntity<byte[]> export(Principal p, @PathVariable String id) {

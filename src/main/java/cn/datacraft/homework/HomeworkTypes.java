@@ -14,6 +14,8 @@ public final class HomeworkTypes {
     public record ClassView(String id, String name, List<Student> students) {}
     public record CreateAssignment(String classId, String title, String domain, Instant startAt,
                                    Instant endAt, List<String> problemIds) {}
+    public record AssignmentRosterPreview(long revision, List<Student> students) {}
+    public record AddAssignmentStudents(long revision, List<Long> uids) {}
     public record Problem(String pid, long docId, String title) {}
     public record Submission(String rid, String domain, long uid, long docId, int status,
                              double score, Instant submittedAt, String contest) {}
